@@ -1,6 +1,14 @@
 # Apsvbench
 Purpose: Benchmarking tool for PASOE  
 Author: S.E. Southwell - Progress  
+Disclaimer: THIS CODE IS PROVIDED FREE AS-IS, WITHOUT ANY WARRANTY OR SUPPORT FROM THE AUTHOR OR PROGRESS SOFTWARE CORPORATION.  USE AT YOUR OWN RISK
+
+This tool allows an OpenEdge developer to put an artificial load on a PASOE OpenEdge app running on APSV protocol.  You can specify multiple simultaneous threads of testers, which will repeatedly connect to and make requests on the appserver.
+
+## Requirements
+You must have OpenEdge 12.x or better installed on a Windows machine to test from.
+You must have access to a PASOE instance running an APSV application
+You must have an appserver procedure that can be called without causing damage to your data, and that can be called simultaneously.
 
 ## Instructions
 1. Extract this project to disk somewhere on your Windows machine.
