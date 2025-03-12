@@ -33,6 +33,13 @@ for /f "delims=0123456789" %%i in ("%count%") do (
 
 if "%repetitions%"=="" set "repetitions=100"
 
+:: Ensure our results directory exists
+IF NOT EXIST "%APSVBENCH%\results" (
+    echo "Creating %APSVBENCH%\results folder"
+    mkdir "%APSVBENCH%\results"
+)
+
+
 echo Starting concurrent execution...
 
 :: Loop to start the processes and write output to their respective log files
