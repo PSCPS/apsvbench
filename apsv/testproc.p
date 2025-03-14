@@ -23,7 +23,7 @@ DEFINE TEMP-TABLE tt-customer NO-UNDO LIKE Customer.
 /* ***************************  Main Block  *************************** */
 DEFINE INPUT PARAMETER cInput AS CHARACTER NO-UNDO.
 DEFINE OUTPUT PARAMETER TABLE FOR tt-customer.
-MESSAGE "Running testproc".
+//MESSAGE "Running testproc".
 FOR EACH Customer WHERE Customer.Name MATCHES cInput NO-LOCK:
     CREATE tt-customer.
     BUFFER-COPY Customer TO tt-customer.

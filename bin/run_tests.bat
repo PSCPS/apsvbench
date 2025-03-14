@@ -6,6 +6,9 @@ CALL "%~dp0validate_env.bat"
 IF ERRORLEVEL 1 (
     exit /b 1
 )
+echo Checking server resources before run...
+CALL "%~dp0startgetagentsessions.bat" 
+CALL "%~dp0runresetmetrics.bat" 
 
 setlocal enabledelayedexpansion
 
@@ -70,15 +73,19 @@ for /l %%i in (1,1,%count%) do (
 )
 
 if !active! GTR 0 (
+    set /p="." <nul
     timeout /t 1 > nul
     goto WAIT_LOOP
 )
-
+echo.
 echo Summarizing results...
 CALL "%~dp0summarize.bat" !count!
 
 endlocal
 
-echo Getting server-side statistics...
+echo.
+echo Server-side statistics:
 CALL "%~dp0startgatherstats" %SERVERSTATSSECONDS%
+CALL "%~dp0startgetagentsessions.bat"
+CALL "%~dp0rungetmetrics.bat"
 

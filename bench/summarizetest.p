@@ -21,18 +21,20 @@ BLOCK-LEVEL ON ERROR UNDO, THROW.
 
 
 /* ***************************  Main Block  *************************** */
-DEFINE VARIABLE iCount AS INTEGER NO-UNDO.
-DEFINE VARIABLE iNumThreads AS INTEGER NO-UNDO.
-DEFINE VARIABLE cTextIn AS CHARACTER NO-UNDO.
-DEFINE VARIABLE iTotalCalls AS INTEGER NO-UNDO.
-DEFINE VARIABLE fTotalElapsed AS DECIMAL NO-UNDO.
-DEFINE VARIABLE fAvgCall AS DECIMAL NO-UNDO.
-DEFINE VARIABLE fMinCall AS DECIMAL INIT ? NO-UNDO.
-DEFINE VARIABLE fMaxCall AS DECIMAL NO-UNDO.
-DEFINE VARIABLE fThisNum AS DECIMAL NO-UNDO.
-DEFINE VARIABLE fThroughput AS DECIMAL NO-UNDO.
-DEFINE VARIABLE fSquaredDevs AS DECIMAL NO-UNDO.
-DEFINE VARIABLE fStdDev AS DECIMAL NO-UNDO.
+DEFINE VARIABLE iCount        AS INTEGER   NO-UNDO.
+DEFINE VARIABLE iNumThreads   AS INTEGER   NO-UNDO.
+DEFINE VARIABLE cTextIn       AS CHARACTER NO-UNDO.
+DEFINE VARIABLE iTotalCalls   AS INTEGER   NO-UNDO.
+DEFINE VARIABLE fTotalElapsed AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fAvgCall      AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fMinCall      AS DECIMAL INIT ? NO-UNDO.
+DEFINE VARIABLE fMaxCall      AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fThisNum      AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fThroughput   AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fSquaredDevs  AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fStdDev       AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fSkewness     AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fSumCube      AS DECIMAL   NO-UNDO.
 
 iNumThreads = INTEGER(SESSION:PARAMETER).
 IF iNumThreads = 0 THEN iNumThreads = 5.
@@ -61,21 +63,29 @@ ASSIGN
     fAvgCall = fTotalElapsed / iTotalCalls
     fThroughPut = iTotalCalls / (fTotalElapsed / iNumThreads).
 
-// Calc std. dev
+// Calc std. dev and skewness
 FOR EACH ttObs:
-    fSquaredDevs += EXP(ttObs.runtime - fAvgCall,2).
+    ASSIGN
+        fSquaredDevs += EXP(ttObs.runtime - fAvgCall,2).
+        fSumCube = fSumCube + EXP(ttObs.runtime - fAvgCall,3).
 END.
 fStdDev = SQRT(fSquaredDevs / iTotalCalls).
 
+IF iTotalCalls > 2 AND fStdDev NE 0 THEN
+    fSkewness = (iTotalCalls / ((iTotalCalls - 1) * (iTotalCalls - 2))) * (fSumCube / EXP(fStdDev,3)).
+ELSE 
+    fSkewness = 0.
+
 DISPLAY 
     fTotalElapsed LABEL "Total Runtime"
-    iNumThreads LABEL "Thread Count"
-    iTotalCalls LABEL "Samples"
-    fAvgCall LABEL "Avg Call (sec)"
-    fMinCall LABEL "Min Call (sec)"
-    fMaxCall LABEL "Max Call (sec)"
-    fStdDev LABEL "Std. Dev."
-    fThroughPut LABEL "Throughput / sec"
+    iNumThreads   LABEL "Thread Count"
+    iTotalCalls   LABEL "Samples"
+    fAvgCall      LABEL "Avg Call (sec)"
+    fMinCall      LABEL "Min Call (sec)"
+    fMaxCall      LABEL "Max Call (sec)"
+    fStdDev       LABEL "Std. Dev."
+    fSkewness     LABEL "Skewness"
+    fThroughPut   LABEL "Throughput / sec"
     WITH 1 COL.
    
 // Get the data in buckets to make a histogram
@@ -113,7 +123,7 @@ DO iBucketNum = 1 TO iBucketCount:
 END.
 
 // Draw a simple histogram
-MESSAGE "Timing histogram:".
+MESSAGE SKIP "Timing histogram:".
 FOR EACH ttBucket:
     ASSIGN
         iNumEq = INTEGER(iBarScale * ttBucket.obsCount / iTotalCalls).
@@ -121,13 +131,13 @@ FOR EACH ttBucket:
         ELSE IF ttBucket.obsCount > 0 THEN cHist = ".".
         ELSE cHist = "".
     IF ttBucket.bucketID < iBucketCount THEN    
-        MESSAGE SUBSTITUTE ("&1 <= x <  &2: &3 &4",
+        MESSAGE SUBSTITUTE ("&1 <= x <  &2: &3 |&4",
             STRING(ttBucket.lowValue,"Z9.999"),
             STRING(ttBucket.highValue,"Z9.999"),
             STRING(ttBucket.obsCount,"Z,ZZ9"),
             cHist).
     ELSE
-        MESSAGE SUBSTITUTE ("&1 <= x <= &2: &3 &4",
+        MESSAGE SUBSTITUTE ("&1 <= x <= &2: &3 |&4",
             STRING(ttBucket.lowValue,"Z9.999"),
             STRING(ttBucket.highValue,"Z9.999"),
             STRING(ttBucket.obsCount,"Z,ZZ9"),

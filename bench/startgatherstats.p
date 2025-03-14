@@ -40,9 +40,9 @@ CATCH e AS Progress.Lang.Error :
     MESSAGE e:GetMessage(1).        
 END CATCH.
 FINALLY:
-    MESSAGE SUBSTITUTE(" CPU Usage: &1%",STRING(fCPU,">>9.99")).
-    MESSAGE SUBSTITUTE(" MEM Usage: &1%",STRING(fMem,">>9.99")).
-    MESSAGE SUBSTITUTE("Swap Usage: &1%",STRING(fSwap,">>9.99")).
+    MESSAGE SUBSTITUTE("                  CPU Usage: &1%",STRING(fCPU,">>9.99")).
+    MESSAGE SUBSTITUTE("                  MEM Usage: &1%",STRING(fMem,">>9.99")).
+    MESSAGE SUBSTITUTE("                 Swap Usage: &1%",STRING(fSwap,">>9.99")).
     hSrv:DISCONNECT().
     QUIT.
 END FINALLY.
