@@ -10,7 +10,7 @@ You must have OpenEdge 12.x or better installed on a Windows machine to test fro
 You must have access to a PASOE instance running an APSV application
 You must have an appserver procedure that can be called without causing damage to your data, and that can be called simultaneously.
 
-## Instructions
+## Quick Instructions
 1. Extract this project to disk somewhere on your Windows machine.
 2. Locate bin/env_vars.bat and edit the file so that APSVBENCH is set to your installation location, and APSVCONNECTSTRING is a valid OpenEdge appserver connection string.
 3. Edit bench/stressapsv.p so that the RUN statement calls the correct .p on your appserver with the right path and parameters.
@@ -63,6 +63,7 @@ You must have an appserver procedure that can be called without causing damage t
     0.693 <= x <  0.713:     0
     0.713 <= x <  0.734:     2 .
    ```
+
   6. On the server, you can monitor for CPU and memory usage at the commandline using the sar command:
       ```
         [ec2-user@rita ~]$ sar -urS 1 20 | tail -n 8
@@ -76,3 +77,9 @@ You must have an appserver procedure that can be called without causing damage t
         Average:      1609468   2486528     60.71    152832      6.15
       
       ``` 
+
+## Files
+   apsv/* - Examples of programs you could place within your appserver's propath in order to load test.  (But feel free to use your own)  
+   bench/*.p - ABL procedures to test the appserver and tabulate results  
+   bin/*.bat - Windows .bat files to start up the multi-threaded testing as well as process the output.  
+   results/*.txt - Data files from each thread of your tests.  If this folder doesn't exist when you first start Apsvbench, then it will be created automatically.
