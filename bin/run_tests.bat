@@ -80,5 +80,5 @@ CALL "%~dp0summarize.bat" !count!
 endlocal
 
 echo Getting server-side statistics...
-CALL "%~dp0startgatherstats" 30
+CALL "%~dp0startgatherstats" %SERVERSTATSSECONDS%
 
