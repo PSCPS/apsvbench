@@ -63,4 +63,16 @@ You must have an appserver procedure that can be called without causing damage t
     0.693 <= x <  0.713:     0
     0.713 <= x <  0.734:     2 .
    ```
-   
+  6. On the server, you can monitor for CPU and memory usage at the commandline using the sar command:
+      ```
+        [ec2-user@rita ~]$ sar -urS 1 20 | tail -n 8
+        Average:        CPU     %user     %nice   %system   %iowait    %steal     %idle
+        Average:        all      0.88      0.00      0.62      0.10      0.57     97.84
+        
+        Average:    kbmemfree   kbavail kbmemused  %memused kbbuffers  kbcached  kbcommit   %commit  kbactive   kbinact   kbdirty
+        Average:        78784    169576   1619421     80.85        24    221644   5679229     93.12    372082   1398296       377
+        
+        Average:    kbswpfree kbswpused  %swpused  kbswpcad   %swpcad
+        Average:      1609468   2486528     60.71    152832      6.15
+      
+      ``` 

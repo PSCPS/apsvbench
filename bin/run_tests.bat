@@ -73,6 +73,12 @@ if !active! GTR 0 (
     timeout /t 1 > nul
     goto WAIT_LOOP
 )
+
 echo Summarizing results...
-summarize.bat !count!
+CALL "%~dp0summarize.bat" !count!
+
 endlocal
+
+echo Getting server-side statistics...
+CALL "%~dp0startgatherstats" 30
+

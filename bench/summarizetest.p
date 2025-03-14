@@ -120,10 +120,18 @@ FOR EACH ttBucket:
         IF iNumEq > 0 THEN cHist = FILL("*",iNumEq).
         ELSE IF ttBucket.obsCount > 0 THEN cHist = ".".
         ELSE cHist = "".
-MESSAGE SUBSTITUTE ("&1 <= x < &2: &3 &4",
-    STRING(ttBucket.lowValue,"Z9.999"),
-    STRING(ttBucket.highValue,"Z9.999"),
-    STRING(ttBucket.obsCount,"Z,ZZ9"),
-    cHist).
+    IF ttBucket.bucketID < iBucketCount THEN    
+        MESSAGE SUBSTITUTE ("&1 <= x <  &2: &3 &4",
+            STRING(ttBucket.lowValue,"Z9.999"),
+            STRING(ttBucket.highValue,"Z9.999"),
+            STRING(ttBucket.obsCount,"Z,ZZ9"),
+            cHist).
+    ELSE
+        MESSAGE SUBSTITUTE ("&1 <= x <= &2: &3 &4",
+            STRING(ttBucket.lowValue,"Z9.999"),
+            STRING(ttBucket.highValue,"Z9.999"),
+            STRING(ttBucket.obsCount,"Z,ZZ9"),
+            cHist).
+    
 END.    
     
