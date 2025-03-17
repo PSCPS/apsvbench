@@ -39,7 +39,7 @@ oJMXQuery = NEW JsonObject().
 oJMXM = NEW JsonArray().
 oJMXQuery:Add("O","PASOE:type=OEManager,name=SessionManager").
 oJMXM:Add("getMetrics").
-oJMXM:Add(SESSION:PARAMETER).
+oJMXM:Add(OS-GETENV("ABLAPPNAME")).
 oJMXQuery:Add("M",oJMXM).
 
 

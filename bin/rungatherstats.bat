@@ -12,4 +12,4 @@ setlocal enabledelayedexpansion
 :: Proceed with your program
 
 set PROPATH=%APSVBENCH%
-%DLC%\bin\_progres -b -p %APSVBENCH%\bench\startgatherstats.p -param %1
+%DLC%\bin\_progres -b -p %APSVBENCH%\bench\rungatherstats.p

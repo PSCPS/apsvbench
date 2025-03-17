@@ -1,6 +1,6 @@
 @echo off
-:: Program is used to run an appserver stress test procedure.
-setlocal
+:: Program is used start a remote call to get the agents and sessioons
+setlocal 
 :: Environment variables
 CALL "%~dp0env_vars.bat"
 CALL "%~dp0validate_env.bat"
@@ -11,4 +11,5 @@ IF ERRORLEVEL 1 (
 :: Proceed with your program
 
 set PROPATH=%APSVBENCH%
-%DLC%\bin\_progres -b -p %APSVBENCH%\bench\stressapsv.p -param %1:%2:%3
+%DLC%\bin\_progres -b -p %APSVBENCH%\bench\rungetagentsessions.p
+endlocal

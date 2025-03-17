@@ -1,6 +1,6 @@
 
 /*------------------------------------------------------------------------
-    File        : startgetagentsessions.p
+    File        : rungetagentsessions.p
     Purpose     : Call the appserver to get agents/sessions config
 
     Syntax      :
@@ -27,6 +27,7 @@ DEFINE VARIABLE oJMXQuery AS JsonObject NO-UNDO.
 DEFINE VARIABLE oJMXM     AS JsonArray  NO-UNDO.
 DEFINE VARIABLE oJMXOut   AS JsonObject NO-UNDO.
 DEFINE VARIABLE iCount    AS INTEGER    NO-UNDO.
+DEFINE VARIABLE cApsvConnectString AS CHARACTER NO-UNDO.
     
 /* ********************  Preprocessor Definitions  ******************** */
 
@@ -38,13 +39,15 @@ oJMXQuery = NEW JsonObject().
 oJMXM = NEW JsonArray().
 oJMXQuery:Add("O","PASOE:type=OEManager,name=AgentManager").
 oJMXM:Add("getAgentSessions").
-oJMXM:Add(SESSION:PARAMETER).
+oJMXM:Add(OS-GETENV("ABLAPPNAME")).
 oJMXQuery:Add("M",oJMXM).
 
+ASSIGN
+    cApsvConnectString =  OS-GETENV("APSVCONNECTSTRING").
 
 // Run the query on the server
 CREATE SERVER hSrv.
-IF hSrv:CONNECT(OS-GETENV("APSVCONNECTSTRING"))
+IF hSrv:CONNECT(cApsvConnectString)
     THEN DO:
     RUN apsv/executejmx.p ON hSrv (INPUT oJMXQuery, OUTPUT oJMXOut).
 END.
@@ -57,8 +60,8 @@ DO iCount = 1 TO iAgentCount:
     iSessionCount = iSessionCount + oJMXOut:GetJsonObject("getAgentSessions"):GetJsonArray("agents"):GetJsonObject(iCount):GetJsonArray("sessions"):Length.
 END.    
 
-MESSAGE SUBSTITUTE("             Agents Running: &1",STRING(iAgentCount,">>9")).
-MESSAGE SUBSTITUTE("           Sessions Running: &1",STRING(iSessionCount,">>9")).
+MESSAGE SUBSTITUTE("        APSV Agents Running: &1",STRING(iAgentCount,">>9")).
+MESSAGE SUBSTITUTE("      APSV Sessions Running: &1",STRING(iSessionCount,">>9")).
 
 
 CATCH e AS Progress.Lang.Error :
@@ -69,5 +72,4 @@ FINALLY:
     DELETE OBJECT oJMXM     NO-ERROR.
     DELETE OBJECT oJMXOut   NO-ERROR.
     hSrv:DISCONNECT().
-    QUIT.
 END FINALLY.

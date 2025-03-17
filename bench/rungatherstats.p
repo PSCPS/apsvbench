@@ -1,6 +1,6 @@
 
 /*------------------------------------------------------------------------
-    File        : startgatherstats.p
+    File        : rungatherstats.p
     Purpose     : Call the appserver to finish stats collection
 
     Syntax      :
@@ -26,7 +26,7 @@ DEFINE VARIABLE fSwap    AS DECIMAL NO-UNDO.
 
 /* ***************************  Main Block  *************************** */
 ASSIGN
-    iSeconds = INTEGER(SESSION:PARAMETER)
+    iSeconds = INTEGER(OS-GETENV("SERVERSTATSSECONDS"))
     NO-ERROR.
 IF iSeconds = 0 THEN iSeconds = 20.
 
@@ -34,15 +34,18 @@ CREATE SERVER hSrv.
 IF hSrv:CONNECT(OS-GETENV("APSVCONNECTSTRING"))
     THEN DO:
     RUN apsv/gatherstats.p ON hSrv (INPUT iSeconds, OUTPUT fCPU, OUTPUT fMem, OUTPUT fSwap).
+    IF fCPU = 0 AND fMem = 0 AND fSwap = 0 
+       THEN MESSAGE "**CPU, MEM, Swap are unavailable.  Start bin/sar_startup.sh in instance".
+    ELSE DO:
+        MESSAGE SUBSTITUTE("                  CPU Usage: &1%",STRING(fCPU,">>9.99")).
+        MESSAGE SUBSTITUTE("                  MEM Usage: &1%",STRING(fMem,">>9.99")).
+        MESSAGE SUBSTITUTE("                 Swap Usage: &1%",STRING(fSwap,">>9.99")).
+    END.
 END.
 ELSE MESSAGE "FAILED TO CONNECT".
 CATCH e AS Progress.Lang.Error :
     MESSAGE e:GetMessage(1).        
 END CATCH.
 FINALLY:
-    MESSAGE SUBSTITUTE("                  CPU Usage: &1%",STRING(fCPU,">>9.99")).
-    MESSAGE SUBSTITUTE("                  MEM Usage: &1%",STRING(fMem,">>9.99")).
-    MESSAGE SUBSTITUTE("                 Swap Usage: &1%",STRING(fSwap,">>9.99")).
-    hSrv:DISCONNECT().
-    QUIT.
+    hSrv:DISCONNECT() NO-ERROR.
 END FINALLY.

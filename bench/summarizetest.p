@@ -76,7 +76,9 @@ IF iTotalCalls > 2 AND fStdDev NE 0 THEN
 ELSE 
     fSkewness = 0.
 
+MESSAGE SKIP "Summarizing Results".
 DISPLAY 
+    iNumThreads   LABEL "Client threads"
     fTotalElapsed LABEL "Total Runtime"
     iNumThreads   LABEL "Thread Count"
     iTotalCalls   LABEL "Samples"
@@ -87,61 +89,80 @@ DISPLAY
     fSkewness     LABEL "Skewness"
     fThroughPut   LABEL "Throughput / sec"
     WITH 1 COL.
-   
-// Get the data in buckets to make a histogram
-DEFINE VARIABLE iBucketCount AS INTEGER NO-UNDO INIT 10.
-DEFINE VARIABLE iBucketNum   AS INTEGER NO-UNDO.
-DEFINE VARIABLE fRange       AS DECIMAL NO-UNDO.
-DEFINE VARIABLE fSlice       AS DECIMAL NO-UNDO.
-DEFINE VARIABLE iBarScale    AS INTEGER NO-UNDO INIT 80.
-DEFINE VARIABLE cHist        AS CHARACTER NO-UNDO.
-DEFINE VARIABLE iNumEq       AS INTEGER NO-UNDO.
 
+IF OS-GETENV("HIST_SHOWHISTOGRAM") = "TRUE" THEN RUN showHistogram.   
 
+MESSAGE SKIP "Server-side statistics:".
+RUN VALUE(OS-GETENV("APSVBENCH") + "/bench/rungatherstats.p").    
+RUN VALUE(OS-GETENV("APSVBENCH") + "/bench/rungetagentsessions.p").    
+RUN VALUE(OS-GETENV("APSVBENCH") + "/bench/rungetmetrics.p").    
 
-ASSIGN
-    fRange = fMaxCall - fMinCall
-    fSlice = fRange / iBucketCount
-    iBarScale = MIN (iBarScale,iTotalCalls).
+PROCEDURE showHistogram:
+    // Get the data in buckets to make a histogram
+    DEFINE VARIABLE iBucketCount  AS INTEGER   NO-UNDO INIT 10.
+    DEFINE VARIABLE iBucketNum    AS INTEGER   NO-UNDO.
+    DEFINE VARIABLE fRange        AS DECIMAL   NO-UNDO.
+    DEFINE VARIABLE fSlice        AS DECIMAL   NO-UNDO.
+    DEFINE VARIABLE iBarScale     AS INTEGER   NO-UNDO INIT 80.
+    DEFINE VARIABLE cHist         AS CHARACTER NO-UNDO.
+    DEFINE VARIABLE iNumEq        AS INTEGER   NO-UNDO.
+    DEFINE VARIABLE cBarscaleType AS CHARACTER NO-UNDO.
     
-DO iBucketNum = 1 TO iBucketCount:
-    CREATE ttBucket.
+    // Histogram control
     ASSIGN
-        ttBucket.BucketId = iBucketNum
-        ttBucket.lowValue = fMinCall + (fSlice * (iBucketNum - 1))
-        ttBucket.highValue = ttBucket.lowValue + fSlice.
-    FOR EACH ttObs
-        WHERE ttObs.runtime >= ttBucket.lowValue
-        AND ttObs.runtime < ttBucket.highValue:
-        ASSIGN ttBucket.obscount += 1.
+        iBucketCount = INTEGER(OS-GETENV("HIST_NUMBUCKETS")) 
+        cBarscaleType = OS-GETENV("HIST_BARSCALE")
+        NO-ERROR.
+    
+    IF iBucketCount < 1 THEN iBucketCount = 10.
+    
+    IF cBarscaleType = "auto" THEN DO:
+        iBarScale = MIN (10 * iBucketCount,iTotalCalls).
     END.
-    IF iBucketNum = iBucketCount 
-        THEN FOR EACH ttObs
-        WHERE ttObs.runtime = ttBucket.highValue:
-        ASSIGN ttBucket.obscount += 1.
-    END.
-END.
-
-// Draw a simple histogram
-MESSAGE SKIP "Timing histogram:".
-FOR EACH ttBucket:
     ASSIGN
-        iNumEq = INTEGER(iBarScale * ttBucket.obsCount / iTotalCalls).
-        IF iNumEq > 0 THEN cHist = FILL("*",iNumEq).
-        ELSE IF ttBucket.obsCount > 0 THEN cHist = ".".
-        ELSE cHist = "".
-    IF ttBucket.bucketID < iBucketCount THEN    
-        MESSAGE SUBSTITUTE ("&1 <= x <  &2: &3 |&4",
-            STRING(ttBucket.lowValue,"Z9.999"),
-            STRING(ttBucket.highValue,"Z9.999"),
-            STRING(ttBucket.obsCount,"Z,ZZ9"),
-            cHist).
-    ELSE
-        MESSAGE SUBSTITUTE ("&1 <= x <= &2: &3 |&4",
-            STRING(ttBucket.lowValue,"Z9.999"),
-            STRING(ttBucket.highValue,"Z9.999"),
-            STRING(ttBucket.obsCount,"Z,ZZ9"),
-            cHist).
+        fRange = fMaxCall - fMinCall
+        fSlice = fRange / iBucketCount.
     
-END.    
+        
+        
+    DO iBucketNum = 1 TO iBucketCount:
+        CREATE ttBucket.
+        ASSIGN
+            ttBucket.BucketId = iBucketNum
+            ttBucket.lowValue = fMinCall + (fSlice * (iBucketNum - 1))
+            ttBucket.highValue = ttBucket.lowValue + fSlice.
+        FOR EACH ttObs
+            WHERE ttObs.runtime >= ttBucket.lowValue
+            AND ttObs.runtime < ttBucket.highValue:
+            ASSIGN ttBucket.obscount += 1.
+        END.
+        IF iBucketNum = iBucketCount 
+            THEN FOR EACH ttObs
+            WHERE ttObs.runtime = ttBucket.highValue:
+            ASSIGN ttBucket.obscount += 1.
+        END.
+    END.
     
+    // Draw a simple histogram
+    MESSAGE SKIP "Timing histogram:".
+    FOR EACH ttBucket:
+        ASSIGN
+            iNumEq = INTEGER(iBarScale * ttBucket.obsCount / iTotalCalls).
+            IF iNumEq > 0 THEN cHist = FILL("*",iNumEq).
+            ELSE IF ttBucket.obsCount > 0 THEN cHist = ".".
+            ELSE cHist = "".
+        IF ttBucket.bucketID < iBucketCount THEN    
+            MESSAGE SUBSTITUTE ("&1 <= x <  &2: &3 |&4",
+                STRING(ttBucket.lowValue,"Z9.999"),
+                STRING(ttBucket.highValue,"Z9.999"),
+                STRING(ttBucket.obsCount,"Z,ZZ9"),
+                cHist).
+        ELSE
+            MESSAGE SUBSTITUTE ("&1 <= x <= &2: &3 |&4",
+                STRING(ttBucket.lowValue,"Z9.999"),
+                STRING(ttBucket.highValue,"Z9.999"),
+                STRING(ttBucket.obsCount,"Z,ZZ9"),
+                cHist).
+        
+    END.       
+END PROCEDURE. // showHistogram
