@@ -35,6 +35,7 @@ DEFINE VARIABLE fSquaredDevs  AS DECIMAL   NO-UNDO.
 DEFINE VARIABLE fStdDev       AS DECIMAL   NO-UNDO.
 DEFINE VARIABLE fSkewness     AS DECIMAL   NO-UNDO.
 DEFINE VARIABLE fSumCube      AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fMedian       AS DECIMAL   NO-UNDO.
 
 iNumThreads = INTEGER(SESSION:PARAMETER).
 IF iNumThreads = 0 THEN iNumThreads = 5.
@@ -64,8 +65,12 @@ ASSIGN
     fThroughPut = iTotalCalls / (fTotalElapsed / iNumThreads).
 
 // Calc std. dev and skewness
-FOR EACH ttObs:
+FOR EACH ttObs BY ttObs.runtime:
     ASSIGN
+        iCount = iCount + 1
+        fMedian = ttObs.runtime WHEN iCount = iTotalCalls / 2
+        fMedian = ttObs.runtime / 2 WHEN (iCount - .5 = iTotalCalls / 2)
+        fMedian = ttObs.runtime / 2 WHEN (iCount + .5 = iTotalCalls / 2)
         fSquaredDevs += EXP(ttObs.runtime - fAvgCall,2).
         fSumCube = fSumCube + EXP(ttObs.runtime - fAvgCall,3).
 END.
@@ -78,13 +83,13 @@ ELSE
 
 MESSAGE SKIP "Summarizing Results".
 DISPLAY 
-    iNumThreads   LABEL "Client threads"
     fTotalElapsed LABEL "Total Runtime"
-    iNumThreads   LABEL "Thread Count"
+    iNumThreads   LABEL "Client Threads"
     iTotalCalls   LABEL "Samples"
     fAvgCall      LABEL "Avg Call (sec)"
     fMinCall      LABEL "Min Call (sec)"
     fMaxCall      LABEL "Max Call (sec)"
+    fMedian       LABEL "Median (sec)"
     fStdDev       LABEL "Std. Dev."
     fSkewness     LABEL "Skewness"
     fThroughPut   LABEL "Throughput / sec"
@@ -107,11 +112,16 @@ PROCEDURE showHistogram:
     DEFINE VARIABLE cHist         AS CHARACTER NO-UNDO.
     DEFINE VARIABLE iNumEq        AS INTEGER   NO-UNDO.
     DEFINE VARIABLE cBarscaleType AS CHARACTER NO-UNDO.
+    DEFINE VARIABLE cRangeType    AS CHARACTER NO-UNDO.
+    DEFINE VARIABLE fHistLowRange AS DECIMAL   NO-UNDO.
+    DEFINE VARIABLE cHistTemplate AS CHARACTER NO-UNDO.
+    
     
     // Histogram control
     ASSIGN
-        iBucketCount = INTEGER(OS-GETENV("HIST_NUMBUCKETS")) 
+        iBucketCount  = INTEGER(OS-GETENV("HIST_NUMBUCKETS")) 
         cBarscaleType = OS-GETENV("HIST_BARSCALE")
+        cRangeType    = OS-GETENV("HIST_RANGETYPE")
         NO-ERROR.
     
     IF iBucketCount < 1 THEN iBucketCount = 10.
@@ -119,17 +129,24 @@ PROCEDURE showHistogram:
     IF cBarscaleType = "auto" THEN DO:
         iBarScale = MIN (10 * iBucketCount,iTotalCalls).
     END.
-    ASSIGN
-        fRange = fMaxCall - fMinCall
-        fSlice = fRange / iBucketCount.
     
-        
+    IF cRangeType = "auto" THEN DO:
+        ASSIGN
+            fRange = fMaxCall - fMinCall
+            fSlice = fRange / iBucketCount
+            fHistLowRange = fMinCall.
+    END.
+    IF cRangeType = "fixed" THEN DO:
+        ASSIGN
+            fHistLowRange = DECIMAL(OS-GETENV("HIST_LOWRANGE"))
+            fSlice = DECIMAL(OS-GETENV("HIST_BUCKETSIZE")).
+    END.
         
     DO iBucketNum = 1 TO iBucketCount:
         CREATE ttBucket.
         ASSIGN
             ttBucket.BucketId = iBucketNum
-            ttBucket.lowValue = fMinCall + (fSlice * (iBucketNum - 1))
+            ttBucket.lowValue = fHistLowRange + (fSlice * (iBucketNum - 1))
             ttBucket.highValue = ttBucket.lowValue + fSlice.
         FOR EACH ttObs
             WHERE ttObs.runtime >= ttBucket.lowValue
@@ -138,31 +155,40 @@ PROCEDURE showHistogram:
         END.
         IF iBucketNum = iBucketCount 
             THEN FOR EACH ttObs
-            WHERE ttObs.runtime = ttBucket.highValue:
+            WHERE ttObs.runtime >= ttBucket.highValue:
             ASSIGN ttBucket.obscount += 1.
         END.
+        IF iBucketNum = 1 
+            THEN FOR EACH ttObs
+            WHERE ttObs.runtime < ttBucket.lowValue:
+            ASSIGN ttBucket.obscount += 1.
+        END.     
     END.
     
     // Draw a simple histogram
-    MESSAGE SKIP "Timing histogram:".
+    MESSAGE SKIP SUBSTITUTE("Timing histogram: (*=&1)",INTEGER(iTotalcalls / iBarscale)).
     FOR EACH ttBucket:
         ASSIGN
             iNumEq = INTEGER(iBarScale * ttBucket.obsCount / iTotalCalls).
-            IF iNumEq > 0 THEN cHist = FILL("*",iNumEq).
-            ELSE IF ttBucket.obsCount > 0 THEN cHist = ".".
-            ELSE cHist = "".
-        IF ttBucket.bucketID < iBucketCount THEN    
-            MESSAGE SUBSTITUTE ("&1 <= x <  &2: &3 |&4",
-                STRING(ttBucket.lowValue,"Z9.999"),
-                STRING(ttBucket.highValue,"Z9.999"),
-                STRING(ttBucket.obsCount,"Z,ZZ9"),
-                cHist).
-        ELSE
-            MESSAGE SUBSTITUTE ("&1 <= x <= &2: &3 |&4",
-                STRING(ttBucket.lowValue,"Z9.999"),
-                STRING(ttBucket.highValue,"Z9.999"),
-                STRING(ttBucket.obsCount,"Z,ZZ9"),
-                cHist).
-        
+        IF iNumEq > 0 THEN cHist = FILL("*",iNumEq).
+        ELSE IF ttBucket.obsCount > 0 THEN cHist = ".".
+        ELSE cHist = "".
+        IF cRangeType = "fixed" THEN DO:
+        CASE ttBucket.bucketID:
+            WHEN 1 
+                THEN  cHistTemplate = "      <  &2: &3 |&4".
+            WHEN iBucketCount 
+                THEN  cHistTemplate = "   > &1:     &3 |&4".
+            OTHERWISE cHistTemplate = "&1 - &2: &3 |&4".
+        END CASE.
+        END.
+        ELSE DO: // auto
+            cHistTemplate = "&1 - &2: &3 |&4".        
+        END.
+        MESSAGE SUBSTITUTE (cHistTemplate,
+            STRING(ttBucket.lowValue,"Z9.999"),
+            STRING(ttBucket.highValue,"Z9.999"),
+            STRING(ttBucket.obsCount,"Z,ZZ9"),
+            cHist).        
     END.       
 END PROCEDURE. // showHistogram

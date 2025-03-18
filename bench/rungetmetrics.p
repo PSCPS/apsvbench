@@ -57,7 +57,7 @@ oMetrics = oJMXOut:GetJsonObject("getMetrics").
 /*END.                                                                  */
 
 MESSAGE 
-    "         Metrics for OE app: " SESSION:PARAMETER SKIP
+    "         Metrics for OE app: " OS-GETENV("ABLAPPNAME") SKIP
     "                   Requests: " oMetrics:GetCharacter("requests") SKIP
     "             Max Concurrent: " oMetrics:GetCharacter("maxConcurrentClients") SKIP
     "   Reserve ABLSession Waits: " oMetrics:GetCharacter("numReserveABLSessionWaits") SKIP

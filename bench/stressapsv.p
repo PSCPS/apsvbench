@@ -67,7 +67,7 @@ PROCEDURE doTests:
                     RUN apsv/testproc.p ON hSrv (INPUT "S*", OUTPUT TABLE-HANDLE hTT).
                 END. // A
                 WHEN "b" THEN DO:
-                    RUN apsv/testproc.p ON hSrv (INPUT "A*", OUTPUT TABLE-HANDLE hTT).                    
+                    RUN apsv/testproc-oscommand.p ON hSrv (INPUT "S*", OUTPUT TABLE-HANDLE hTT).                    
                 END.
                 OTHERWISE RUN apsv/testproc.p ON hSrv (INPUT "*", OUTPUT TABLE-HANDLE hTT).
                 
