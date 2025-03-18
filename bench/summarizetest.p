@@ -69,8 +69,8 @@ FOR EACH ttObs BY ttObs.runtime:
     ASSIGN
         iCount = iCount + 1
         fMedian = ttObs.runtime WHEN iCount = iTotalCalls / 2
-        fMedian = ttObs.runtime / 2 WHEN (iCount - .5 = iTotalCalls / 2)
-        fMedian = ttObs.runtime / 2 WHEN (iCount + .5 = iTotalCalls / 2)
+        fMedian = fMedian + ttObs.runtime / 2 WHEN (iCount - .5 = iTotalCalls / 2)
+        fMedian = fMedian + ttObs.runtime / 2 WHEN (iCount + .5 = iTotalCalls / 2)
         fSquaredDevs += EXP(ttObs.runtime - fAvgCall,2).
         fSumCube = fSumCube + EXP(ttObs.runtime - fAvgCall,3).
 END.
@@ -86,10 +86,10 @@ DISPLAY
     fTotalElapsed LABEL "Total Runtime"
     iNumThreads   LABEL "Client Threads"
     iTotalCalls   LABEL "Samples"
-    fAvgCall      LABEL "Avg Call (sec)"
-    fMinCall      LABEL "Min Call (sec)"
-    fMaxCall      LABEL "Max Call (sec)"
-    fMedian       LABEL "Median (sec)"
+    fAvgCall      LABEL "Avg Call (sec)" FORMAT ">9.999"
+    fMinCall      LABEL "Min Call (sec)" FORMAT ">9.999"
+    fMaxCall      LABEL "Max Call (sec)" FORMAT ">9.999"
+    fMedian       LABEL "Median (sec)" FORMAT ">9.999"
     fStdDev       LABEL "Std. Dev."
     fSkewness     LABEL "Skewness"
     fThroughPut   LABEL "Throughput / sec"
@@ -115,6 +115,8 @@ PROCEDURE showHistogram:
     DEFINE VARIABLE cRangeType    AS CHARACTER NO-UNDO.
     DEFINE VARIABLE fHistLowRange AS DECIMAL   NO-UNDO.
     DEFINE VARIABLE cHistTemplate AS CHARACTER NO-UNDO.
+    DEFINE VARIABLE iCountPerStar AS INTEGER   NO-UNDO.
+    DEFINE VARIABLE iModeBucketId AS INTEGER   NO-UNDO.
     
     
     // Histogram control
@@ -166,13 +168,39 @@ PROCEDURE showHistogram:
     END.
     
     // Draw a simple histogram
-    MESSAGE SKIP SUBSTITUTE("Timing histogram: (*=&1)",INTEGER(iTotalcalls / iBarscale)).
+    iCountPerStar = INTEGER(iTotalcalls / iBarscale).
+    
+    MESSAGE SKIP SUBSTITUTE("Timing histogram: (@=&1, *=&2, .>=1)",iCountPerStar,iCountPerStar / 2).
+    FOR EACH ttBucket BY ttBucket.ObsCount DESCENDING:
+        iModeBucketId = ttBucket.bucketID.
+        LEAVE.
+    END.
+    
     FOR EACH ttBucket:
         ASSIGN
-            iNumEq = INTEGER(iBarScale * ttBucket.obsCount / iTotalCalls).
-        IF iNumEq > 0 THEN cHist = FILL("*",iNumEq).
+            iNumEq = TRUNCATE(ttBucket.obsCount / iCountPerStar,0).
+        IF iNumEq > 0 THEN DO:
+            cHist = FILL("@",iNumEq).
+            IF ttBucket.obsCount MODULO iCountPerStar > iCountPerStar / 2 
+                THEN cHist = cHist + "*".
+            ELSE IF ttBucket.obsCount MODULO iCountPerStar > 0
+                THEN cHist = cHist + ".".
+        END.
+        ELSE IF ttBucket.obsCount > iCountPerStar / 2 THEN cHist = "*".
         ELSE IF ttBucket.obsCount > 0 THEN cHist = ".".
         ELSE cHist = "".
+        
+        // Mark the median
+        IF ttBucket.lowValue <= fMedian AND ttBucket.highValue >= fMedian
+            THEN cHist = cHist + SUBSTITUTE(" (med=&1) ",TRIM(STRING(fMedian,">9.999"))).
+        
+        // Mark the average
+        IF ttBucket.lowValue <= fAvgCall AND ttBucket.highValue >= fAvgCall
+            THEN cHist = cHist + SUBSTITUTE(" (avg=&1) ",TRIM(STRING(fAvgCall,">9.999"))).
+        
+        // Mark the mode
+        IF ttBucket.bucketID = iModeBucketId THEN cHist = cHist + " (mode)".
+        
         IF cRangeType = "fixed" THEN DO:
         CASE ttBucket.bucketID:
             WHEN 1 
