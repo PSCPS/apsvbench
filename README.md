@@ -60,7 +60,7 @@ Also make sure that you set ABLAPPNAME.
    If your env_vars.bat is not setup correctly, you may have an error display.  Otherwise, you are ready to try multiple threads.
 7. Run the run_tests.bat command below to have 40 threads each run 100 repetitions
    ```
-   run_tests run_stresstestapsv.bat 40 100
+   run_tests a 40 100
    ```
    Check for a response like this:
    ```
