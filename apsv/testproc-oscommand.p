@@ -30,5 +30,5 @@ FOR EACH Customer WHERE Customer.Name MATCHES cInput NO-LOCK:
 END.
 
 // Quick little os-command to test performance degradation on fork
-OS-COMMAND VALUE ("sleep 2"). // simple and non-destructive
-MESSAGE "PAUSED".
+OS-COMMAND VALUE ("sleep 1"). // simple and non-destructive
+
