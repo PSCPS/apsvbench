@@ -111,8 +111,8 @@ Also make sure that you set ABLAPPNAME.
    apsv/* - Examples of programs you could place within your appserver's propath in order to load test.  (But feel free to use your own)  
    bench/*.p - ABL procedures to test the appserver and tabulate results  
    bin/*.bat - Windows .bat files to start up the multi-threaded testing as well as process the output.  
-   bin/*.sh - Linux shell scripts to place in the {CATALINA_BASE}/bin directory of the instance you want to test. (Optional to gather server-side stats)
-   results/*.txt - Data files from each thread of your tests.  If this folder doesn't exist when you first start Apsvbench, then it will be created automatically.
+   bin/*.sh - Linux shell scripts to place in the {CATALINA_BASE}/bin directory of the instance you want to test. (Optional to gather server-side stats)  
+   results/*.txt - Data files from each thread of your tests.  If this folder doesn't exist when you first start Apsvbench, then it will be created automatically.  
    results/testlog.csv - Results are written here in csv format in addition to being shown on-screen.
    
 ## Testing Tips
