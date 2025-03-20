@@ -1,6 +1,6 @@
 
 /*------------------------------------------------------------------------
-    File        : testproc.p
+    File        : testproc-oscommand.p
     Purpose     : Test procedure EXAMPLE for load-testing APSV calls
 
     Syntax      : THIS PROCEDURE REQUIRES SPORTS2020 DATABASE
@@ -29,4 +29,6 @@ FOR EACH Customer WHERE Customer.Name MATCHES cInput NO-LOCK:
     BUFFER-COPY Customer TO tt-customer.
 END.
 
+// Quick little os-command to test performance degradation on fork
+OS-COMMAND VALUE ("sleep 1"). // simple and non-destructive
 

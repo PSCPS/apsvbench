@@ -11,4 +11,4 @@ IF ERRORLEVEL 1 (
 :: Proceed with your program
 
 set PROPATH=%APSVBENCH%
-%DLC%\bin\_progres -b -p %APSVBENCH%\bench\stressapsv.p -param %1:%2
+%DLC%\bin\_progres -b -p %APSVBENCH%\bench\stressapsv.p -param %1:%2:%3

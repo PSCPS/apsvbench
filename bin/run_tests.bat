@@ -1,5 +1,5 @@
 @echo off
-:: Program is used to run a command or script multiple times simultaneously
+:: Program is used to kick off multiple simultaneous OpenEdge sessions to test an appserver
 :: Environment variables
 CALL "%~dp0env_vars.bat"
 CALL "%~dp0validate_env.bat"
@@ -7,19 +7,19 @@ IF ERRORLEVEL 1 (
     exit /b 1
 )
 echo Checking server resources before run...
-CALL "%~dp0startgetagentsessions.bat" 
+CALL "%~dp0rungetagentsessions.bat" 
 CALL "%~dp0runresetmetrics.bat" 
 
 setlocal enabledelayedexpansion
 
 :: Check if two parameters are provided
 if "%~1"=="" (
-    echo Usage: %~nx0 "command" number_of_instances [repetitions]
+    echo Usage: %~nx0 "[a | b]" number_of_instances [repetitions]
     exit /b 1
 )
 
 if "%~2"=="" (
-    echo Usage: %~nx0 "command" number_of_instances [repetitions]
+    echo Usage: %~nx0 "[a | b]" number_of_instances [repetitions]
     exit /b 1
 )
 
@@ -34,7 +34,7 @@ for /f "delims=0123456789" %%i in ("%count%") do (
     exit /b 1
 )
 
-if "%repetitions%"=="" set "repetitions=100"
+if "%repetitions%"=="" set "repetitions=1"
 
 :: Ensure our results directory exists
 IF NOT EXIST "%APSVBENCH%\results" (
@@ -42,7 +42,7 @@ IF NOT EXIST "%APSVBENCH%\results" (
     mkdir "%APSVBENCH%\results"
 )
 
-
+echo TestId: %command%
 echo Starting concurrent execution...
 
 :: Loop to start the processes and write output to their respective log files
@@ -50,7 +50,7 @@ echo Starting concurrent execution...
 for /l %%i in (1,1,%count%) do (
     set "log_file=%APSVBENCH%\results\log_%%i.txt"
     echo. > !log_file!
-    start /b cmd /c %command% %%i %repetitions% >> !log_file! 2>&1
+    start /b cmd /c %~dp0run_stresstestapsv.bat %%i %repetitions% %command% >> !log_file! 2>&1
 )
 
 echo Awaiting completion...
@@ -77,15 +77,7 @@ if !active! GTR 0 (
     timeout /t 1 > nul
     goto WAIT_LOOP
 )
-echo.
-echo Summarizing results...
-CALL "%~dp0summarize.bat" !count!
-
 endlocal
 
-echo.
-echo Server-side statistics:
-CALL "%~dp0startgatherstats" %SERVERSTATSSECONDS%
-CALL "%~dp0startgetagentsessions.bat"
-CALL "%~dp0rungetmetrics.bat"
+CALL "%~dp0summarize.bat" %2:%3
 

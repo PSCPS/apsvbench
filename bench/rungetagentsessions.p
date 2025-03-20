@@ -1,7 +1,7 @@
 
 /*------------------------------------------------------------------------
-    File        : rungetmetrics.p
-    Purpose     : Call the appserver to get the metrics
+    File        : rungetagentsessions.p
+    Purpose     : Call the appserver to get agents/sessions config
 
     Syntax      :
 
@@ -27,8 +27,8 @@ DEFINE VARIABLE oJMXQuery AS JsonObject NO-UNDO.
 DEFINE VARIABLE oJMXM     AS JsonArray  NO-UNDO.
 DEFINE VARIABLE oJMXOut   AS JsonObject NO-UNDO.
 DEFINE VARIABLE iCount    AS INTEGER    NO-UNDO.
-DEFINE VARIABLE oMetrics  AS JsonObject NO-UNDO.    
-DEFINE VARIABLE cNames    AS CHARACTER  EXTENT NO-UNDO.
+DEFINE VARIABLE cApsvConnectString AS CHARACTER NO-UNDO.
+    
 /* ********************  Preprocessor Definitions  ******************** */
 
 
@@ -37,32 +37,32 @@ DEFINE VARIABLE cNames    AS CHARACTER  EXTENT NO-UNDO.
 // Build Query for agents
 oJMXQuery = NEW JsonObject().
 oJMXM = NEW JsonArray().
-oJMXQuery:Add("O","PASOE:type=OEManager,name=SessionManager").
-oJMXM:Add("getMetrics").
-oJMXM:Add(SESSION:PARAMETER).
+oJMXQuery:Add("O","PASOE:type=OEManager,name=AgentManager").
+oJMXM:Add("getAgentSessions").
+oJMXM:Add(OS-GETENV("ABLAPPNAME")).
 oJMXQuery:Add("M",oJMXM).
 
+ASSIGN
+    cApsvConnectString =  OS-GETENV("APSVCONNECTSTRING").
 
 // Run the query on the server
 CREATE SERVER hSrv.
-IF hSrv:CONNECT(OS-GETENV("APSVCONNECTSTRING"))
+IF hSrv:CONNECT(cApsvConnectString)
     THEN DO:
     RUN apsv/executejmx.p ON hSrv (INPUT oJMXQuery, OUTPUT oJMXOut).
 END.
 ELSE MESSAGE "FAILED TO CONNECT".
-oMetrics = oJMXOut:GetJsonObject("getMetrics").
-/*cNames = oMetrics:GetNames().                                         */
-/*DO iCount = 1 TO EXTENT (cNames):                                     */
-/*    MESSAGE cNames[iCount] ": " oMetrics:GetCharacter(cNames[iCount]).*/
-/*END.                                                                  */
 
-MESSAGE 
-    "         Metrics for OE app: " SESSION:PARAMETER SKIP
-    "                   Requests: " oMetrics:GetCharacter("requests") SKIP
-    "             Max Concurrent: " oMetrics:GetCharacter("maxConcurrentClients") SKIP
-    "   Reserve ABLSession Waits: " oMetrics:GetCharacter("numReserveABLSessionWaits") SKIP
-    "Reserve ABLSession Timeouts: " oMetrics:GetCharacter("numReserveABLSessionTimeouts") SKIP.
-    
+// Now parse the results
+iAgentcount = oJMXOut:GetJsonObject("getAgentSessions"):GetJsonArray("agents"):Length.
+IF iAgentCount > 0 THEN
+DO iCount = 1 TO iAgentCount:
+    iSessionCount = iSessionCount + oJMXOut:GetJsonObject("getAgentSessions"):GetJsonArray("agents"):GetJsonObject(iCount):GetJsonArray("sessions"):Length.
+END.    
+
+MESSAGE SUBSTITUTE("        APSV Agents Running: &1",STRING(iAgentCount,">>9")).
+MESSAGE SUBSTITUTE("      APSV Sessions Running: &1",STRING(iSessionCount,">>9")).
+
 
 CATCH e AS Progress.Lang.Error :
     MESSAGE e:GetMessage(1).        
@@ -72,5 +72,4 @@ FINALLY:
     DELETE OBJECT oJMXM     NO-ERROR.
     DELETE OBJECT oJMXOut   NO-ERROR.
     hSrv:DISCONNECT().
-    QUIT.
 END FINALLY.

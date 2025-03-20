@@ -1,7 +1,6 @@
-
 /*------------------------------------------------------------------------
     File        : summarizetest.p
-    Purpose     : 
+    Purpose     : Gather up data about both the tests and how the server responded
 
     Syntax      :
 
@@ -15,31 +14,41 @@
 /* ***************************  Definitions  ************************** */
 
 BLOCK-LEVEL ON ERROR UNDO, THROW.
-{bench/ttObs.i}
+
+USING OpenEdge.Core.Session FROM PROPATH.
+USING Progress.Json.ObjectModel.JsonArray FROM PROPATH.
+USING Progress.Json.ObjectModel.JsonObject FROM PROPATH.
 
 /* ********************  Preprocessor Definitions  ******************** */
-
+{bench/ttObs.i}
 
 /* ***************************  Main Block  *************************** */
-DEFINE VARIABLE iCount        AS INTEGER   NO-UNDO.
-DEFINE VARIABLE iNumThreads   AS INTEGER   NO-UNDO.
-DEFINE VARIABLE cTextIn       AS CHARACTER NO-UNDO.
-DEFINE VARIABLE iTotalCalls   AS INTEGER   NO-UNDO.
-DEFINE VARIABLE fTotalElapsed AS DECIMAL   NO-UNDO.
-DEFINE VARIABLE fAvgCall      AS DECIMAL   NO-UNDO.
-DEFINE VARIABLE fMinCall      AS DECIMAL INIT ? NO-UNDO.
-DEFINE VARIABLE fMaxCall      AS DECIMAL   NO-UNDO.
-DEFINE VARIABLE fThisNum      AS DECIMAL   NO-UNDO.
-DEFINE VARIABLE fThroughput   AS DECIMAL   NO-UNDO.
-DEFINE VARIABLE fSquaredDevs  AS DECIMAL   NO-UNDO.
-DEFINE VARIABLE fStdDev       AS DECIMAL   NO-UNDO.
-DEFINE VARIABLE fSkewness     AS DECIMAL   NO-UNDO.
-DEFINE VARIABLE fSumCube      AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE iCount             AS INTEGER   NO-UNDO.
+DEFINE VARIABLE cTextIn            AS CHARACTER NO-UNDO.
+DEFINE VARIABLE fThisNum           AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fSquaredDevs       AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fSumCube           AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE cTestlog           AS CHARACTER NO-UNDO.
+DEFINE VARIABLE cAPSVConnectString AS CHARACTER NO-UNDO.
+DEFINE VARIABLE hSrv               AS HANDLE    NO-UNDO. 
+DEFINE VARIABLE iRepsPerThread     AS INTEGER   NO-UNDO.
 
-iNumThreads = INTEGER(SESSION:PARAMETER).
-IF iNumThreads = 0 THEN iNumThreads = 5.
+ASSIGN
+    cApsvConnectString =  OS-GETENV("APSVCONNECTSTRING")
+    cTestLog = SUBSTITUTE("&1\results\testlog.csv",OS-GETENV("APSVBENCH")).
 
-DO iCount = 1 TO iNumThreads:
+RUN initLog.
+
+CREATE ttTestRun.
+ASSIGN
+    ttTestRun.ABLAppName = OS-GETENV("ABLAPPNAME")      
+    ttTestRun.TestDateTime = NOW
+    ttTestRun.NumThreads = INTEGER(ENTRY(1,SESSION:PARAMETER,":"))
+    iRepsPerThread = INTEGER(ENTRY(2,SESSION:PARAMETER,":")).
+IF ttTestRun.NumThreads = 0 THEN ttTestRun.NumThreads = 1.
+
+
+DO iCount = 1 TO ttTestRun.NumThreads:
     INPUT FROM VALUE (SUBSTITUTE("&1\results\log_&2.txt",OS-GETENV("APSVBENCH"),iCount)).
     REPEAT ON ENDKEY UNDO, LEAVE:
         IMPORT UNFORMATTED cTextIn.
@@ -47,101 +56,373 @@ DO iCount = 1 TO iNumThreads:
             THEN DO:
             CREATE ttObs.
             ASSIGN 
-                iTotalCalls += 1
-                ttObs.obsId = iTotalCalls
+                ttTestRun.TotalCalls += 1
+                ttObs.obsId = ttTestRun.TotalCalls
                 ttObs.runtime = DECIMAL(ENTRY(2,cTextIn,":"))
-                fTotalElapsed += ttObs.runtime
-                fMaxCall = MAX(fMaxCall,ttObs.runtime).
-            IF fMinCall = ? THEN fMinCall = ttObs.runtime.
-            ELSE fMinCall = MIN(ttObs.runtime,fMinCall).      
+                ttTestRun.TotalElapsed += ttObs.runtime
+                ttTestRun.MaxCall = MAX(ttTestRun.MaxCall,ttObs.runtime).
+            IF ttTestRun.MinCall = ? THEN ttTestRun.MinCall = ttObs.runtime.
+            ELSE ttTestRun.MinCall = MIN(ttObs.runtime,ttTestRun.MinCall).      
               
         END.
     END.
     INPUT CLOSE.
 END. 
 ASSIGN
-    fAvgCall = fTotalElapsed / iTotalCalls
-    fThroughPut = iTotalCalls / (fTotalElapsed / iNumThreads).
+    ttTestRun.AvgCall = ttTestRun.TotalElapsed / ttTestRun.TotalCalls
+    ttTestRun.Throughput = ttTestRun.TotalCalls / (ttTestRun.TotalElapsed / ttTestRun.NumThreads)
+    ttTestRun.ErrorCount = (ttTestRun.NumThreads * iRepsPerThread) - ttTestRun.TotalCalls.
 
 // Calc std. dev and skewness
-FOR EACH ttObs:
+FOR EACH ttObs BY ttObs.runtime:
     ASSIGN
-        fSquaredDevs += EXP(ttObs.runtime - fAvgCall,2).
-        fSumCube = fSumCube + EXP(ttObs.runtime - fAvgCall,3).
+        iCount = iCount + 1
+        ttTestRun.Median = ttObs.runtime WHEN iCount = ttTestRun.TotalCalls / 2
+        ttTestRun.Median = ttTestRun.Median + ttObs.runtime / 2 WHEN (iCount - .5 = ttTestRun.TotalCalls / 2)
+        ttTestRun.Median = ttTestRun.Median + ttObs.runtime / 2 WHEN (iCount + .5 = ttTestRun.TotalCalls / 2)
+        fSquaredDevs += EXP(ttObs.runtime - ttTestRun.AvgCall,2).
+        fSumCube = fSumCube + EXP(ttObs.runtime - ttTestRun.AvgCall,3).
 END.
-fStdDev = SQRT(fSquaredDevs / iTotalCalls).
+ttTestRun.StdDev = SQRT(fSquaredDevs / ttTestRun.TotalCalls).
 
-IF iTotalCalls > 2 AND fStdDev NE 0 THEN
-    fSkewness = (iTotalCalls / ((iTotalCalls - 1) * (iTotalCalls - 2))) * (fSumCube / EXP(fStdDev,3)).
+IF ttTestRun.TotalCalls > 2 AND ttTestRun.StdDev NE 0 THEN
+    ttTestRun.Skewness = (ttTestRun.TotalCalls / ((ttTestRun.TotalCalls - 1) * (ttTestRun.TotalCalls - 2))) * (fSumCube / EXP(ttTestRun.StdDev,3)).
 ELSE 
-    fSkewness = 0.
+    ttTestRun.Skewness = 0.
+
+MESSAGE SKIP "Summarizing Results".
+DISPLAY 
+    ttTestRun.TotalElapsed 
+    ttTestRun.NumThreads   
+    ttTestRun.TotalCalls   
+    ttTestRun.AvgCall     
+    ttTestRun.MinCall     
+    ttTestRun.MaxCall     
+    ttTestRun.Median      
+    ttTestRun.StdDev      
+    ttTestRun.Skewness    
+    ttTestRun.Throughput   
+    WITH 3 COL WIDTH 100 FRAME test.
+
+IF OS-GETENV("HIST_SHOWHISTOGRAM") = "TRUE" THEN RUN showHistogram.   
+
+MESSAGE SKIP "Server-side statistics:".
+RUN ConnectAPSV.
+RUN GatherStats.
+RUN GetAgentSessions.
+RUN GetMetrics.
 
 DISPLAY 
-    fTotalElapsed LABEL "Total Runtime"
-    iNumThreads   LABEL "Thread Count"
-    iTotalCalls   LABEL "Samples"
-    fAvgCall      LABEL "Avg Call (sec)"
-    fMinCall      LABEL "Min Call (sec)"
-    fMaxCall      LABEL "Max Call (sec)"
-    fStdDev       LABEL "Std. Dev."
-    fSkewness     LABEL "Skewness"
-    fThroughPut   LABEL "Throughput / sec"
-    WITH 1 COL.
-   
-// Get the data in buckets to make a histogram
-DEFINE VARIABLE iBucketCount AS INTEGER NO-UNDO INIT 10.
-DEFINE VARIABLE iBucketNum   AS INTEGER NO-UNDO.
-DEFINE VARIABLE fRange       AS DECIMAL NO-UNDO.
-DEFINE VARIABLE fSlice       AS DECIMAL NO-UNDO.
-DEFINE VARIABLE iBarScale    AS INTEGER NO-UNDO INIT 80.
-DEFINE VARIABLE cHist        AS CHARACTER NO-UNDO.
-DEFINE VARIABLE iNumEq       AS INTEGER NO-UNDO.
+    ttTestRun.CPUPercent
+    ttTestRun.MemPercent
+    ttTestRun.SwapPercent
+    ttTestRun.AgentsRunning
+    ttTestRun.SessionsRunning
+    ttTestRun.ABLAppname
+    ttTestRun.Requests
+    ttTestRun.MaxConcurrent
+    ttTestRun.ResAblSessWaits
+    ttTestRun.ResAblSessTO
+    ttTestRun.ErrorCount
+    WITH 3 COL WIDTH 100 FRAME server.
 
+OUTPUT TO VALUE (cTestLog) APPEND.
+EXPORT DELIMITER "," ttTestRun.
+OUTPUT CLOSE.
 
+FINALLY:
+    hSrv:DISCONNECT() NO-ERROR.
+END FINALLY.
 
-ASSIGN
-    fRange = fMaxCall - fMinCall
-    fSlice = fRange / iBucketCount
-    iBarScale = MIN (iBarScale,iTotalCalls).
-    
-DO iBucketNum = 1 TO iBucketCount:
-    CREATE ttBucket.
+/* **********************  Internal Procedures  *********************** */
+PROCEDURE ConnectAPSV:
+/*------------------------------------------------------------------------------
+ Purpose: Connect to the appserver to gather info
+ Notes:
+------------------------------------------------------------------------------*/
+    DEFINE VARIABLE iCount AS INTEGER NO-UNDO.
+    DO iCount = 1 TO 20 ON ERROR UNDO, NEXT:
+        PAUSE 0.05 * iCount.
+        CREATE SERVER hSrv.
+        IF hSrv:CONNECT(cAPSVConnectString) THEN RETURN.
+        CATCH e AS Progress.Lang.Error :
+            MESSAGE "apsv connect failed - trying again" iCount.        
+        END CATCH.
+    END.
+    MESSAGE "FAILED TO CONNECT TO APPSERVER FOR STATS".
+END PROCEDURE.
+
+PROCEDURE GatherStats:
+/*------------------------------------------------------------------------------
+ Purpose: Get CPU, Mem, and Swap stats
+ Notes:
+------------------------------------------------------------------------------*/
+    DEFINE VARIABLE iSeconds AS INTEGER NO-UNDO.
+    DEFINE VARIABLE fCPU     AS DECIMAL NO-UNDO.
+    DEFINE VARIABLE fMem     AS DECIMAL NO-UNDO.
+    DEFINE VARIABLE fSwap    AS DECIMAL NO-UNDO.
+        
     ASSIGN
-        ttBucket.BucketId = iBucketNum
-        ttBucket.lowValue = fMinCall + (fSlice * (iBucketNum - 1))
-        ttBucket.highValue = ttBucket.lowValue + fSlice.
-    FOR EACH ttObs
-        WHERE ttObs.runtime >= ttBucket.lowValue
-        AND ttObs.runtime < ttBucket.highValue:
-        ASSIGN ttBucket.obscount += 1.
-    END.
-    IF iBucketNum = iBucketCount 
-        THEN FOR EACH ttObs
-        WHERE ttObs.runtime = ttBucket.highValue:
-        ASSIGN ttBucket.obscount += 1.
-    END.
+        iSeconds = INTEGER(OS-GETENV("SERVERSTATSSECONDS"))
+        NO-ERROR.
+    IF iSeconds = 0 THEN iSeconds = 20.
+    
+        RUN apsv/gatherstats.p ON hSrv (INPUT iSeconds, OUTPUT fCPU, OUTPUT fMem, OUTPUT fSwap).
+        IF fCPU = 0 AND fMem = 0 AND fSwap = 0 
+            THEN DO:
+            MESSAGE "**CPU, MEM, Swap are unavailable.  Start bin/sar_startup.sh in instance".
+            ASSIGN
+                fCPU = ?
+                fMem = ?
+                fSwap = ?.
+            
+        END.
+        ASSIGN
+            ttTestRun.CPUPercent = fCPU
+            ttTestRun.MemPercent = fMem
+            ttTestRun.SwapPercent = fSwap.
+    CATCH e AS Progress.Lang.Error :
+        MESSAGE e:GetMessage(1).        
+    END CATCH.
+    FINALLY:
+
+    END FINALLY.
+
+END PROCEDURE.
+
+PROCEDURE GetAgentSessions:
+/*------------------------------------------------------------------------------
+ Purpose: Get how many agents the service has, and how many sessions
+ Notes:
+------------------------------------------------------------------------------*/
+    DEFINE VARIABLE iAgentCount   AS INTEGER NO-UNDO.
+    DEFINE VARIABLE iSessionCount AS INTEGER NO-UNDO.
+    
+    DEFINE VARIABLE oJMXQuery AS JsonObject NO-UNDO.
+    DEFINE VARIABLE oJMXM     AS JsonArray  NO-UNDO.
+    DEFINE VARIABLE oJMXOut   AS JsonObject NO-UNDO.
+    DEFINE VARIABLE iCount    AS INTEGER    NO-UNDO.
+
+    // Build Query for agents
+    oJMXQuery = NEW JsonObject().
+    oJMXM = NEW JsonArray().
+    oJMXQuery:Add("O","PASOE:type=OEManager,name=AgentManager").
+    oJMXM:Add("getAgentSessions").
+    oJMXM:Add(OS-GETENV("ABLAPPNAME")).
+    oJMXQuery:Add("M",oJMXM).
+    
+    
+    // Run the query on the server
+    RUN apsv/executejmx.p ON hSrv (INPUT oJMXQuery, OUTPUT oJMXOut).
+    
+    // Now parse the results
+    iAgentcount = oJMXOut:GetJsonObject("getAgentSessions"):GetJsonArray("agents"):Length.
+    IF iAgentCount > 0 THEN
+    DO iCount = 1 TO iAgentCount:
+        iSessionCount = iSessionCount + oJMXOut:GetJsonObject("getAgentSessions"):GetJsonArray("agents"):GetJsonObject(iCount):GetJsonArray("sessions"):Length.
+    END.    
+    
+    ASSIGN
+        ttTestRun.AgentsRunning = iAgentCount
+        ttTestRun.SessionsRunning = iSessionCount.
+    
+    CATCH e AS Progress.Lang.Error :
+        MESSAGE e:GetMessage(1).        
+    END CATCH.
+    FINALLY:
+        DELETE OBJECT oJMXQuery NO-ERROR.
+        DELETE OBJECT oJMXM     NO-ERROR.
+        DELETE OBJECT oJMXOut   NO-ERROR.
+    END FINALLY.
+    
+END PROCEDURE.
+
+PROCEDURE getMetrics:
+/*------------------------------------------------------------------------------
+ Purpose: Get metrics from our server
+ Notes:
+------------------------------------------------------------------------------*/
+    DEFINE VARIABLE iAgentCount   AS INTEGER NO-UNDO.
+    DEFINE VARIABLE iSessionCount AS INTEGER NO-UNDO.
+    
+    DEFINE VARIABLE oJMXQuery AS JsonObject NO-UNDO.
+    DEFINE VARIABLE oJMXM     AS JsonArray  NO-UNDO.
+    DEFINE VARIABLE oJMXOut   AS JsonObject NO-UNDO.
+    DEFINE VARIABLE iCount    AS INTEGER    NO-UNDO.
+    DEFINE VARIABLE oMetrics  AS JsonObject NO-UNDO.    
+    DEFINE VARIABLE cNames    AS CHARACTER  EXTENT NO-UNDO.
+    
+    // Build Query for agents
+    oJMXQuery = NEW JsonObject().
+    oJMXM = NEW JsonArray().
+    oJMXQuery:Add("O","PASOE:type=OEManager,name=SessionManager").
+    oJMXM:Add("getMetrics").
+    oJMXM:Add(OS-GETENV("ABLAPPNAME")).
+    oJMXQuery:Add("M",oJMXM).
+    
+    // Run the query on the server
+    RUN apsv/executejmx.p ON hSrv (INPUT oJMXQuery, OUTPUT oJMXOut).
+    oMetrics = oJMXOut:GetJsonObject("getMetrics").
+    
+    ASSIGN
+        ttTestRun.Requests        = INTEGER(oMetrics:GetCharacter("requests"))
+        ttTestRun.MaxConcurrent   = INTEGER(oMetrics:GetCharacter("maxConcurrentClients"))
+        ttTestRun.ResAblSessWaits = INTEGER(oMetrics:GetCharacter("numReserveABLSessionWaits"))
+        ttTestRun.ResAblSessTO    = INTEGER(oMetrics:GetCharacter("numReserveABLSessionTimeouts")).
+        
+    CATCH e AS Progress.Lang.Error :
+        MESSAGE e:GetMessage(1).        
+    END CATCH.
+    FINALLY:
+        DELETE OBJECT oJMXQuery NO-ERROR.
+        DELETE OBJECT oJMXM     NO-ERROR.
+        DELETE OBJECT oJMXOut   NO-ERROR.
+    END FINALLY.
+    
+END PROCEDURE.
+
+PROCEDURE InitLog:
+/*------------------------------------------------------------------------------
+ Purpose: Initialize the log file with header row
+ Notes:
+------------------------------------------------------------------------------*/
+DEFINE VARIABLE hBuf AS HANDLE NO-UNDO.
+DEFINE VARIABLE i    AS INTEGER NO-UNDO.
+DEFINE VARIABLE cOut AS CHARACTER NO-UNDO.
+
+
+FILE-INFO:FILE-NAME = cTestLog.
+IF FILE-INFO:FULL-PATHNAME = ? THEN DO:
+    OUTPUT TO VALUE (cTestLog).
+    CREATE BUFFER hBuf FOR TABLE "ttTestRun".
+    DO i = 1 TO hBuf:NUM-FIELDS:
+        cOut = SUBSTITUTE("&1,&2",cOut,QUOTER(hBuf:BUFFER-FIELD(i):LABEL)).
+    END.      
+    cOut = TRIM(cOut,",").    
+    PUT UNFORMATTED cOut SKIP.
+    OUTPUT CLOSE.
 END.
 
-// Draw a simple histogram
-MESSAGE SKIP "Timing histogram:".
-FOR EACH ttBucket:
+END PROCEDURE.
+
+PROCEDURE showHistogram:
+/*------------------------------------------------------------------------------
+ Purpose: Draw a simple character histogram to illustrate the distributions of timings
+ Notes: To do: Consider making this its own generalized class
+------------------------------------------------------------------------------*/
+    // Get the data in buckets to make a histogram
+    DEFINE VARIABLE iBucketCount  AS INTEGER   NO-UNDO INIT 10.
+    DEFINE VARIABLE iBucketNum    AS INTEGER   NO-UNDO.
+    DEFINE VARIABLE fRange        AS DECIMAL   NO-UNDO.
+    DEFINE VARIABLE fSlice        AS DECIMAL   NO-UNDO.
+    DEFINE VARIABLE iBarScale     AS INTEGER   NO-UNDO INIT 80.
+    DEFINE VARIABLE cHist         AS CHARACTER NO-UNDO.
+    DEFINE VARIABLE iNumEq        AS INTEGER   NO-UNDO.
+    DEFINE VARIABLE cBarscaleType AS CHARACTER NO-UNDO.
+    DEFINE VARIABLE cRangeType    AS CHARACTER NO-UNDO.
+    DEFINE VARIABLE fHistLowRange AS DECIMAL   NO-UNDO.
+    DEFINE VARIABLE cHistTemplate AS CHARACTER NO-UNDO.
+    DEFINE VARIABLE iCountPerStar AS INTEGER   NO-UNDO.
+    DEFINE VARIABLE iModeBucketId AS INTEGER   NO-UNDO.
+
+    // Histogram control
     ASSIGN
-        iNumEq = INTEGER(iBarScale * ttBucket.obsCount / iTotalCalls).
-        IF iNumEq > 0 THEN cHist = FILL("*",iNumEq).
+        iBucketCount  = INTEGER(OS-GETENV("HIST_NUMBUCKETS")) 
+        cBarscaleType = OS-GETENV("HIST_BARSCALE")
+        cRangeType    = OS-GETENV("HIST_RANGETYPE")
+        NO-ERROR.
+    
+    IF iBucketCount < 1 THEN iBucketCount = 10.
+    
+    IF cBarscaleType = "auto" THEN DO:
+        iBarScale = MIN (10 * iBucketCount,ttTestRun.TotalCalls).
+    END.
+    
+    IF cRangeType = "auto" THEN DO:
+        ASSIGN
+            fRange = ttTestRun.MaxCall - ttTestRun.MinCall
+            fSlice = fRange / iBucketCount
+            fHistLowRange = ttTestRun.MinCall.
+    END.
+    IF cRangeType = "fixed" THEN DO:
+        ASSIGN
+            fHistLowRange = DECIMAL(OS-GETENV("HIST_LOWRANGE"))
+            fSlice = DECIMAL(OS-GETENV("HIST_BUCKETSIZE")).
+    END.
+        
+    DO iBucketNum = 1 TO iBucketCount:
+        CREATE ttBucket.
+        ASSIGN
+            ttBucket.BucketId = iBucketNum
+            ttBucket.lowValue = fHistLowRange + (fSlice * (iBucketNum - 1))
+            ttBucket.highValue = ttBucket.lowValue + fSlice.
+        FOR EACH ttObs
+            WHERE ttObs.runtime >= ttBucket.lowValue
+            AND ttObs.runtime < ttBucket.highValue:
+            ASSIGN ttBucket.obscount += 1.
+        END.
+        IF iBucketNum = iBucketCount 
+            THEN FOR EACH ttObs
+            WHERE ttObs.runtime >= ttBucket.highValue:
+            ASSIGN ttBucket.obscount += 1.
+        END.
+        IF iBucketNum = 1 
+            THEN FOR EACH ttObs
+            WHERE ttObs.runtime < ttBucket.lowValue:
+            ASSIGN ttBucket.obscount += 1.
+        END.     
+    END.
+    
+    // Draw a simple histogram
+    iCountPerStar = INTEGER(ttTestRun.TotalCalls / iBarscale).
+    
+    MESSAGE SKIP SUBSTITUTE("Timing histogram: (@=&1, *=&2, .>=1)",iCountPerStar,iCountPerStar / 2).
+    FOR EACH ttBucket BY ttBucket.ObsCount DESCENDING:
+        iModeBucketId = ttBucket.bucketID.
+        LEAVE.
+    END.
+    
+    FOR EACH ttBucket:
+        ASSIGN
+            iNumEq = TRUNCATE(ttBucket.obsCount / iCountPerStar,0).
+        IF iNumEq > 0 THEN DO:
+            cHist = FILL("@",iNumEq).
+            IF ttBucket.obsCount MODULO iCountPerStar > iCountPerStar / 2 
+                THEN cHist = cHist + "*".
+            ELSE IF ttBucket.obsCount MODULO iCountPerStar > 0
+                THEN cHist = cHist + ".".
+        END.
+        ELSE IF ttBucket.obsCount > iCountPerStar / 2 THEN cHist = "*".
         ELSE IF ttBucket.obsCount > 0 THEN cHist = ".".
         ELSE cHist = "".
-    IF ttBucket.bucketID < iBucketCount THEN    
-        MESSAGE SUBSTITUTE ("&1 <= x <  &2: &3 |&4",
+        
+        // Mark the median
+        IF ttBucket.lowValue <= ttTestRun.Median AND ttBucket.highValue >= ttTestRun.Median
+            THEN cHist = cHist + SUBSTITUTE(" (med=&1) ",TRIM(STRING(ttTestRun.Median,">9.999"))).
+        
+        // Mark the average
+        IF ttBucket.lowValue <= ttTestRun.AvgCall AND ttBucket.highValue >= ttTestRun.AvgCall
+            THEN cHist = cHist + SUBSTITUTE(" (avg=&1) ",TRIM(STRING(ttTestRun.AvgCall,">9.999"))).
+        
+        // Mark the mode
+        IF ttBucket.bucketID = iModeBucketId THEN cHist = cHist + " (mode)".
+        
+        IF cRangeType = "fixed" THEN DO:
+        CASE ttBucket.bucketID:
+            WHEN 1 
+                THEN  cHistTemplate = "      <  &2: &3 |&4".
+            WHEN iBucketCount 
+                THEN  cHistTemplate = "   > &1:     &3 |&4".
+            OTHERWISE cHistTemplate = "&1 - &2: &3 |&4".
+        END CASE.
+        END.
+        ELSE DO: // auto
+            cHistTemplate = "&1 - &2: &3 |&4".        
+        END.
+        MESSAGE SUBSTITUTE (cHistTemplate,
             STRING(ttBucket.lowValue,"Z9.999"),
             STRING(ttBucket.highValue,"Z9.999"),
             STRING(ttBucket.obsCount,"Z,ZZ9"),
-            cHist).
-    ELSE
-        MESSAGE SUBSTITUTE ("&1 <= x <= &2: &3 |&4",
-            STRING(ttBucket.lowValue,"Z9.999"),
-            STRING(ttBucket.highValue,"Z9.999"),
-            STRING(ttBucket.obsCount,"Z,ZZ9"),
-            cHist).
-    
-END.    
-    
+            cHist).        
+    END.       
+END PROCEDURE. // showHistogram
