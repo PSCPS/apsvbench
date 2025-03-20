@@ -115,4 +115,11 @@ Also make sure that you set ABLAPPNAME.
    results/*.txt - Data files from each thread of your tests.  If this folder doesn't exist when you first start Apsvbench, then it will be created automatically.
    results/testlog.csv - Results are written here in csv format in addition to being shown on-screen.
    
-
+## Testing Tips
+You may hit local limits on your own machine before you are able to adequately stress out your server.
+If you are doing concurrency over about 25 threads, then you'll have to probably reduce the number of repetitions in order
+to prevent running out of local network resources.  You may also find that you can run out of local memory or CPU.  Definitely
+watch your task manager's performance view until you can see where your local machine's limits are.  You also want to watch the "Errors" number
+that Apsvbench reports in the output.  In the example above, you can see that the user asked for 40 sessions at 100 repetitions, but it only
+managed to get 1,323 samples, and 2,677 errors. What may be happening is that the system is running out of network ports for requests.  If
+you wait a minute, those ports free up and you can try again
