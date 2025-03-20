@@ -97,7 +97,6 @@ PROCEDURE doTests:
             END.  
             ASSIGN
                 iCount = iCount - 1
-            //    fElapsed = (MTIME - iStartTime) / 1000
                 fAvg = fElapsed / iCount.
             
             MESSAGE SUBSTITUTE("Thread#:&1", iThreadNum).
@@ -124,5 +123,8 @@ PROCEDURE primePump:
     // Connect and disconnect once
     CREATE SERVER hSrv.
     IF hSrv:CONNECT(cApsvConnect) THEN hSrv:DISCONNECT ().    
+    CATCH e AS Progress.Lang.Error :
+        MESSAGE "Couldn't connect".        
+    END CATCH.
 END PROCEDURE.
 

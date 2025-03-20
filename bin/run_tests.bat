@@ -79,5 +79,5 @@ if !active! GTR 0 (
 )
 endlocal
 
-CALL "%~dp0summarize.bat" %2
+CALL "%~dp0summarize.bat" %2:%3
 
