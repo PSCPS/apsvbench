@@ -41,6 +41,11 @@ DEFINE TEMP-TABLE ttTestRun NO-UNDO
     FIELD Median          AS DECIMAL LABEL "Median"    FORMAT ">9.999"
     FIELD Skewness        AS DECIMAL LABEL "Skewness"  FORMAT "->9.999"
     FIELD ThroughPut      AS DECIMAL LABEL "Throughput"
+    FIELD CoeffVariation  AS DECIMAL LABEL "CoeffVar" FORMAT "->9.999"
+    FIELD IQR             AS DECIMAL LABEL "IQR" FORMAT ">9.999"
+    FIELD CI95            AS DECIMAL LABEL "CI 95%" FORMAT ">9.999"
+    FIELD P90             AS DECIMAL LABEL "P90" FORMAT ">9.999"
+    FIELD P95             AS DECIMAL LABEL "P95" FORMAT ">9.999"
     // Server-side stats 
     FIELD CPUPercent      AS DECIMAL LABEL "CPU Usage"   FORMAT ">9.99%"
     FIELD MemPercent      AS DECIMAL LABEL "MEM Usage"   FORMAT ">9.99%"

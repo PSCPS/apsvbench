@@ -18,6 +18,7 @@ BLOCK-LEVEL ON ERROR UNDO, THROW.
 USING OpenEdge.Core.Session FROM PROPATH.
 USING Progress.Json.ObjectModel.JsonArray FROM PROPATH.
 USING Progress.Json.ObjectModel.JsonObject FROM PROPATH.
+USING Progress.Lang.AppError FROM PROPATH.
 
 /* ********************  Preprocessor Definitions  ******************** */
 {bench/ttObs.i}
@@ -32,10 +33,22 @@ DEFINE VARIABLE cTestlog           AS CHARACTER NO-UNDO.
 DEFINE VARIABLE cAPSVConnectString AS CHARACTER NO-UNDO.
 DEFINE VARIABLE hSrv               AS HANDLE    NO-UNDO. 
 DEFINE VARIABLE iRepsPerThread     AS INTEGER   NO-UNDO.
+DEFINE VARIABLE lDiscardOutliers   AS LOGICAL   NO-UNDO.
+DEFINE VARIABLE cDiscardType       AS CHARACTER NO-UNDO.
+DEFINE VARIABLE cTrustLevel        AS CHARACTER NO-UNDO.
+DEFINE VARIABLE iWarmupRuns        AS INTEGER   NO-UNDO.
+DEFINE VARIABLE iThisThreadCount   AS INTEGER   NO-UNDO.
+DEFINE VARIABLE iNumToDiscard      AS INTEGER   NO-UNDO.
+DEFINE VARIABLE iNumDiscarded      AS INTEGER   NO-UNDO. 
+DEFINE VARIABLE fLowerIQRFence     AS DECIMAL   NO-UNDO.
+DEFINE VARIABLE fUpperIQRFence     AS DECIMAL   NO-UNDO.
 
 ASSIGN
-    cApsvConnectString =  OS-GETENV("APSVCONNECTSTRING")
-    cTestLog = SUBSTITUTE("&1\results\testlog.csv",OS-GETENV("APSVBENCH")).
+    cApsvConnectString = OS-GETENV("APSVCONNECTSTRING")
+    cDiscardType       = OS-GETENV("DISCARDTYPE")
+    lDiscardOutliers   = LOGICAL(OS-GETENV("DISCARDOUTLIERS"))
+    iWarmupRuns        = INTEGER(OS-GETENV("WARMUPRUNS"))
+    cTestLog           = SUBSTITUTE("&1\results\testlog.csv",OS-GETENV("APSVBENCH")).
 
 RUN initLog.
 
@@ -44,34 +57,101 @@ ASSIGN
     ttTestRun.ABLAppName = OS-GETENV("ABLAPPNAME")      
     ttTestRun.TestDateTime = NOW
     ttTestRun.NumThreads = INTEGER(ENTRY(1,SESSION:PARAMETER,":"))
-    iRepsPerThread = INTEGER(ENTRY(2,SESSION:PARAMETER,":")).
-IF ttTestRun.NumThreads = 0 THEN ttTestRun.NumThreads = 1.
+    iRepsPerThread = INTEGER(ENTRY(2,SESSION:PARAMETER,":"))
+    NO-ERROR.
+IF ttTestRun.NumThreads = 0 
+    OR iRepsPerThread = 0
+    THEN UNDO, THROW NEW AppError("The number of threads and reps per thread must be passed in using format N:R as a session parameter.",400).
 
 
 DO iCount = 1 TO ttTestRun.NumThreads:
+    iThisThreadCount = 0.
     INPUT FROM VALUE (SUBSTITUTE("&1\results\log_&2.txt",OS-GETENV("APSVBENCH"),iCount)).
     REPEAT ON ENDKEY UNDO, LEAVE:
         IMPORT UNFORMATTED cTextIn.
         IF cTextIn MATCHES "OBSV:*"
             THEN DO:
+            iThisThreadCount += 1.    
+            IF iThisThreadCount <= iWarmupRuns THEN NEXT. // Ignore some number of initial requests to "warm up" the server.
             CREATE ttObs.
             ASSIGN 
                 ttTestRun.TotalCalls += 1
                 ttObs.obsId = ttTestRun.TotalCalls
-                ttObs.runtime = DECIMAL(ENTRY(2,cTextIn,":"))
-                ttTestRun.TotalElapsed += ttObs.runtime
-                ttTestRun.MaxCall = MAX(ttTestRun.MaxCall,ttObs.runtime).
-            IF ttTestRun.MinCall = ? THEN ttTestRun.MinCall = ttObs.runtime.
-            ELSE ttTestRun.MinCall = MIN(ttObs.runtime,ttTestRun.MinCall).      
-              
+                ttObs.runtime = DECIMAL(ENTRY(2,cTextIn,":")).
         END.
     END.
     INPUT CLOSE.
+    iNumDiscarded += iWarmupRuns.
+END.
+// Compute InterQuartile Range, P90 and P95 - Use closest integer for N instead of trying to split the difference.
+iThisThreadCount = 0.
+FOR EACH ttObs BY ttObs.runtime:
+    iThisThreadCount += 1.
+    IF iThisThreadCount = INTEGER(ttTestRun.TotalCalls / 4) 
+        THEN ASSIGN
+            fLowerIQRFence = ttObs.runtime
+            ttTestRun.IQR = ttObs.runtime. // ~ 25th percentile
+    IF iThisThreadCount = INTEGER(3 * ttTestRun.TotalCalls / 4) 
+        THEN ASSIGN
+            ttTestRun.IQR = ttObs.runtime - ttTestRun.IQR // ~ 75th percentile
+            fUpperIQRFence = ttObs.runtime.
+    IF iThisThreadCount = INTEGER(ttTestRun.TotalCalls * .9) // 90th percentile
+        THEN ttTestRun.P90 = ttObs.runtime.            
+    IF iThisThreadCount = INTEGER(ttTestRun.TotalCalls * .95) // 95th percentile
+        THEN ttTestRun.P95 = ttObs.runtime.            
+END.
+
+// Delete the highest and lowest values, if requested
+IF lDiscardOutliers AND cDiscardType MATCHES "PERCENT:*" 
+    OR cDiscardType MATCHES "FIXED:*" THEN DO:
+    IF cDiscardType MATCHES "PERCENT:*" 
+        THEN iNumToDiscard =  INTEGER(INTEGER(ENTRY(2,cDiscardType,":")) * .01 * ttTestRun.TotalCalls).
+    ELSE iNumToDiscard = INTEGER(ENTRY(2,cDiscardType,":")).
+    PUT UNFORMATTED SKIP(2).
+    MESSAGE "Deleting top and bottom outliers." cDiscardType.
+    FOR EACH ttObs BY ttObs.runtime iThisThreadCount = 1 TO iNumToDiscard:
+//        MESSAGE "Deleting low outlier: " ttObs.runtime.
+        DELETE ttObs.
+        ASSIGN
+            iNumDiscarded += 1
+            ttTestRun.TotalCalls -= 1.
+    END.
+    
+    FOR EACH ttObs BY ttObs.runtime DESCENDING iThisThreadCount = 1 TO iNumToDiscard:
+//        MESSAGE "Deleting high outlier: " ttObs.runtime.
+        DELETE ttObs.
+        ASSIGN
+            iNumDiscarded += 1
+            ttTestRun.TotalCalls -= 1.
+    END.
+END.
+
+// Delete the highest and lowest values, if requested
+IF lDiscardOutliers AND cDiscardType MATCHES "IQR:*" THEN DO:
+    fLowerIQRFence = MAXIMUM(0,fLowerIQRFence - (DECIMAL(ENTRY(2,cDiscardType,":")) * ttTestRun.IQR)).
+    fUpperIQRFence = fUpperIQRFence + (DECIMAL(ENTRY(2,cDiscardType,":")) * ttTestRun.IQR).
+    PUT UNFORMATTED SKIP(2).
+    MESSAGE "Deleting outliers:" cDiscardType "Lower fence:" fLowerIQRFence "Upper fence:" fUpperIQRFence.
+    FOR EACH ttObs WHERE ttObs.runtime < fLowerIQRFence
+        OR ttObs.runtime > fUpperIQRFence:
+        MESSAGE "Deleting IQR outlier: " ttObs.runtime.
+        DELETE ttObs.
+        ASSIGN
+            iNumDiscarded += 1
+            ttTestRun.TotalCalls -= 1.
+    END.
+END.
+FOR EACH ttObs:
+    ASSIGN 
+        ttTestRun.TotalElapsed += ttObs.runtime
+        ttTestRun.MaxCall = MAX(ttTestRun.MaxCall,ttObs.runtime).
+    IF ttTestRun.MinCall = ? THEN ttTestRun.MinCall = ttObs.runtime.
+    ELSE ttTestRun.MinCall = MIN(ttObs.runtime,ttTestRun.MinCall).      
 END. 
 ASSIGN
     ttTestRun.AvgCall = ttTestRun.TotalElapsed / ttTestRun.TotalCalls
     ttTestRun.Throughput = ttTestRun.TotalCalls / (ttTestRun.TotalElapsed / ttTestRun.NumThreads)
-    ttTestRun.ErrorCount = (ttTestRun.NumThreads * iRepsPerThread) - ttTestRun.TotalCalls.
+    ttTestRun.ErrorCount = (ttTestRun.NumThreads * iRepsPerThread) - ttTestRun.TotalCalls - iNumDiscarded.
 
 // Calc std. dev and skewness
 FOR EACH ttObs BY ttObs.runtime:
@@ -83,28 +163,49 @@ FOR EACH ttObs BY ttObs.runtime:
         fSquaredDevs += EXP(ttObs.runtime - ttTestRun.AvgCall,2).
         fSumCube = fSumCube + EXP(ttObs.runtime - ttTestRun.AvgCall,3).
 END.
-ttTestRun.StdDev = SQRT(fSquaredDevs / ttTestRun.TotalCalls).
+ASSIGN
+    ttTestRun.StdDev = SQRT(fSquaredDevs / ttTestRun.TotalCalls)
+    ttTestRun.CoeffVariation = ttTestRun.StdDev / ttTestRun.AvgCall.
+IF ttTestRun.CoeffVariation <= 0.0125 THEN cTrustLevel = "Ultra Tight".
+ELSE IF ttTestRun.CoeffVariation <= 0.025 THEN cTrustLevel = "Very Tight".
+ELSE IF ttTestRun.CoeffVariation <= 0.05 THEN cTrustLevel = "Tight".
+ELSE IF ttTestRun.CoeffVariation <= 0.10 THEN cTrustLevel = "Acceptable".
+ELSE IF ttTestRun.CoeffVariation <= 0.20 THEN cTrustLevel = "Noisy".
+ELSE cTrustLevel = "Too Noisy".
 
 IF ttTestRun.TotalCalls > 2 AND ttTestRun.StdDev NE 0 THEN
     ttTestRun.Skewness = (ttTestRun.TotalCalls / ((ttTestRun.TotalCalls - 1) * (ttTestRun.TotalCalls - 2))) * (fSumCube / EXP(ttTestRun.StdDev,3)).
 ELSE 
     ttTestRun.Skewness = 0.
+    
+// Confidence interval
+ttTestRun.CI95 = 1.96 * (ttTestRun.StdDev / SQRT(ttTestRun.TotalCalls)).
 
 MESSAGE SKIP "Summarizing Results".
+DEFINE VARIABLE ciformat AS CHARACTER NO-UNDO.
+ciformat = ">>9.999".
 DISPLAY 
     ttTestRun.TotalElapsed 
     ttTestRun.NumThreads   
     ttTestRun.TotalCalls   
     ttTestRun.AvgCall     
+    "+/-" + TRIM(STRING(ttTestRun.CI95,ciformat)) LABEL "95% CI"
     ttTestRun.MinCall     
+    ttTestRun.P90
+    ttTestRun.P95
     ttTestRun.MaxCall     
     ttTestRun.Median      
     ttTestRun.StdDev      
     ttTestRun.Skewness    
     ttTestRun.Throughput   
+    ttTestRun.CoeffVariation
+    ttTestRun.IQR
+    cTrustLevel FORMAT "X(12)" LABEL "Result Trust"
     WITH 3 COL WIDTH 100 FRAME test.
 
-IF OS-GETENV("HIST_SHOWHISTOGRAM") = "TRUE" THEN RUN showHistogram.   
+IF OS-GETENV("HIST_SHOWHISTOGRAM") = "TRUE" 
+    AND ttTestRun.TotalCalls > 0
+    THEN RUN showHistogram.   
 
 MESSAGE SKIP "Server-side statistics:".
 RUN ConnectAPSV.
@@ -349,6 +450,8 @@ PROCEDURE showHistogram:
             fHistLowRange = DECIMAL(OS-GETENV("HIST_LOWRANGE"))
             fSlice = DECIMAL(OS-GETENV("HIST_BUCKETSIZE")).
     END.
+    FIND FIRST ttTestRun.
+    ASSIGN iBucketCount = MIN(ttTestRun.TotalCalls,iBucketCount).  // Can't have more buckets than observations.
         
     DO iBucketNum = 1 TO iBucketCount:
         CREATE ttBucket.
