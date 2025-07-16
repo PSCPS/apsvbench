@@ -72,6 +72,12 @@ for /l %%i in (1,1,%count%) do (
     )
 )
 
+:: Check for stop flag
+if exist "%~dp0test.stop" (
+    echo Stopping due to user request.
+    goto END
+)
+
 if !active! GTR 0 (
     set /p="." <nul
     timeout /t 1 > nul
@@ -80,4 +86,4 @@ if !active! GTR 0 (
 endlocal
 
 CALL "%~dp0summarize.bat" %2:%3
-
+:END
