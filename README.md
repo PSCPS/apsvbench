@@ -163,20 +163,20 @@ You may use Ctrl-C within the run_stresstestapsv.bat program, which will stop th
 The two things you'll probably be most interested in are **Avg Call** (Average time per call) and the histogram showing how the results are distributed.    
 
 There are other fields you may have interest in:
--95% CI: Provides a 95% confidence interval when added/subtracted from the average.
--CoeffVar:  Coefficient of Variance - Ratio of standard deviation to average.  Low numbers indicate tight results
--IQR: Interquartile Range - 75th percentile value minus 25th percentile value
--Min Call: Minimum amount of time (excluding outliers)
--Max Call: Maxiumum amount of time (excluding outliers)
--Median: The middle value of the set. (not the same as average)
--Mode: The most frequently occurring timing (applies to the bucket which contains the most samples)
--P90: 90% of calls take less than this amount of time  
--P95: 95% of calls take less than this amount of time
--Result Trust: Written interpreation of CoeffVar: Ultra Tight, Very Tight, Tight, Acceptable, Noisy, and Too Noisy.  You should be wary of trusting noisy results.
--Std. Dev: Standard deviation - normal statistical meaning
--Skewness: A measure of how skewed the histogram is from a "normal" distribution.
--Throughput: Ratio of tests to actual elapsed time.  (Tests completed per second)
--Tot. Runtime: Sum of each thread's total runtime.  Divide by # of threads to get actual test time
+- 95% CI: Provides a 95% confidence interval when added/subtracted from the average.
+- CoeffVar:  Coefficient of Variance - Ratio of standard deviation to average.  Low numbers indicate tight results
+- IQR: Interquartile Range - 75th percentile value minus 25th percentile value
+- Min Call: Minimum amount of time (excluding outliers)
+- Max Call: Maxiumum amount of time (excluding outliers)
+- Median: The middle value of the set. (not the same as average)
+- Mode: The most frequently occurring timing (applies to the bucket which contains the most samples)
+- P90: 90% of calls take less than this amount of time  
+- P95: 95% of calls take less than this amount of time
+- Result Trust: Written interpreation of CoeffVar: Ultra Tight, Very Tight, Tight, Acceptable, Noisy, and Too Noisy.  You should be wary of trusting noisy results.
+- Std. Dev: Standard deviation - normal statistical meaning
+- Skewness: A measure of how skewed the histogram is from a "normal" distribution.
+- Throughput: Ratio of tests to actual elapsed time.  (Tests completed per second)
+- Tot. Runtime: Sum of each thread's total runtime.  Divide by # of threads to get actual test time
 
 ## Server-side statistics
 The first row of the server-side statistics comes from output of the server's sar command, as collected over a period of time during
