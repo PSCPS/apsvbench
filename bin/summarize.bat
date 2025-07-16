@@ -9,4 +9,4 @@ CALL "%~dp0validate_env.bat"
 IF ERRORLEVEL 1 (
     exit /b 1
 )
-%DLC%\bin\_progres -b -p c:\apps\apsvbench\bench\summarizetest.p -param %1
+%DLC%\bin\_progres -b -p c:\apps\apsvbench\bench\summarizetest.p -cpstream ISO8859-1 -param %1
