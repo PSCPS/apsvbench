@@ -119,19 +119,24 @@ Also make sure that you set ABLAPPNAME.
 The bin/env_vars.bat file contains various configuration variables to drive the testing and display of results.
 
 The following is an alphabetical listing of the environment variables and what they mean:
-   ABLAPPNAME - Name of the ABL app that you are testing on your appserver.  Used when gathering PASOE data for test results.
-   APSVBENCH - The fully qualified path of the apsvbench directory
-   APSVCONNECTSTRING - The appserver connection string to use when making the connection.  Just like you would use in a connect statement.
-   DISCARDOUTLIERS - TRUE or FALSE - whether the results should discard outliers in accordance with DISCARDTYPE
-   DISCARDTYPE - How the program should discard outliers, if it does that.  
-      Format:
-         TYPE:VALUE
-      Type Options:
-         FIXED - Set a number of records from both the high and low side to remove.  e.g. FIXED:2
-         IQR - Remove numbers based on Interquartile range: below Q1 - x*IQR or above Q3 + x*IQR.  The value to enter is x in this equation, and 1.5 is a good value to use.
-   HIST_SHOWHISTOGRAM - TRUE or FALSE - whether to show a histogram of the result timings.  Useful for determining visually how the results go.
-   SERVERSTATSSECONDS - The number of seconds worth of server-side stats to grab at the end of the test.  Try to set this such that it captures your tests during the most stressed portion. Defaults to 20.
-   WARMUPRUNS - The number of runs that each thread should use to "warm up" before counting the result.  This operations in addition to throwing out outliers. 
+
+   **ABLAPPNAME** - Name of the ABL app that you are testing on your appserver.  Used when gathering PASOE data for test results.  
+   **APSVBENCH** - The fully qualified path of the apsvbench directory  
+   **APSVCONNECTSTRING** - The appserver connection string to use when making the connection.  Just like you would use in a connect statement.  
+   **DISCARDOUTLIERS** - TRUE or FALSE - whether the results should discard outliers in accordance with DISCARDTYPE  
+   **DISCARDTYPE** - How the program should discard outliers, if it does that.  
+      Format:  
+         TYPE:VALUE  
+      Type Options:  
+         FIXED - Set a number of records from both the high and low side to remove.  e.g. FIXED:2  
+         IQR - Remove numbers based on Interquartile range: below Q1 - x*IQR or above Q3 + x*IQR.  The value to enter is x in this equation, and 1.5 is a good value to use.  
+   **HIST_SHOWHISTOGRAM** - TRUE or FALSE - whether to show a histogram of the result timings.  Useful for determining visually how the results go.  
+   **HIST_NUMBUCKETS** - Number of "buckets" to divide results into for the histogram.  The top and bottom buckets will contain any numbers that are out of range.  
+   **HIST_RANGETYPE** - fixed or auto - Use auto to have the program calculate the appropriate range based on results.  Use fixed if you need to compare test results with a common histogram range.   
+   **HIST_LOWRANGE** - Sets the low number when HIST_RANGETYPE is fixed.
+   **HIST_BUCKETSIZE** - Sets the numeric range of each bucket when HIST_RANGETYPE is fixed.  
+   **SERVERSTATSSECONDS** - The number of seconds worth of server-side stats to grab at the end of the test.  Try to set this such that it captures your tests during the most stressed portion. Defaults to 20.  
+   **WARMUPRUNS** - The number of runs that each thread should use to "warm up" before counting the result.  This operations in addition to throwing out outliers.  
     
    
 ## Testing Tips
