@@ -12,6 +12,8 @@
     Created     : Wed Mar 05 15:24:21 CST 2025
     Notes       :
     To Do       : Add better error handling
+                  Maybe move test case into an include to avoid users having to edit this file?
+                  Better stop handling.
   ----------------------------------------------------------------------*/
 
 /* ***************************  Definitions  ************************** */
@@ -56,7 +58,13 @@ RUN doTests.
 PROCEDURE doTests:
     MESSAGE "TestId:" cTestId.
     iStartTime = MTIME.
+    MAXLOOP:
     DO iCount = 1 TO  fMaxCalls ON ERROR UNDO, THROW:
+        FILE-INFO:FILE-NAME = "test.stop".
+        IF FILE-INFO:FULL-PATHNAME NE ? THEN DO:
+            MESSAGE "Stopping due to test.stop file.  Remember to delete before starting another test.".
+            LEAVE MAXLOOP.
+        END.
         ETIME(YES).
         CREATE SERVER hSrv.
         IF hSrv:CONNECT(cApsvConnect) THEN DO:
@@ -64,10 +72,16 @@ PROCEDURE doTests:
             // from the commandline.  Just put a case for each thing you want to try
             CASE cTestId:
                 WHEN "a" THEN DO:
-                    RUN apsv/testproc.p ON hSrv (INPUT "S*", OUTPUT TABLE-HANDLE hTT).
+                    RUN apsv/testproc.p ON hSrv.
                 END. // A
                 WHEN "b" THEN DO:
-                    RUN apsv/testproc-oscommand.p ON hSrv (INPUT "S*", OUTPUT TABLE-HANDLE hTT).                    
+                    RUN apsv/testproc2.p ON hSrv.                    
+                END.
+                WHEN "c" THEN DO:
+                    RUN apsv/testproc3.p ON hSrv.                    
+                END.
+                WHEN "noop" THEN DO:
+                    RUN apsv/noop.p ON hSrv.                    
                 END.
                 OTHERWISE RUN apsv/testproc.p ON hSrv (INPUT "*", OUTPUT TABLE-HANDLE hTT).
                 
@@ -75,7 +89,7 @@ PROCEDURE doTests:
         END.
         ELSE MESSAGE "FAILED TO CONNECT" iCount.
         FINALLY:
-            hSrv:DISCONNECT().
+            hSrv:DISCONNECT() NO-ERROR.
             fThisTime = ETIME / 1000 .
             CREATE ttObs.
             ASSIGN
